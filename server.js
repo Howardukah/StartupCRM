@@ -1542,10 +1542,10 @@ async function sendViaResendApi(mailOptions) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return false;
   try {
-    const fromAddr = process.env.SMTP_USER || 'onboarding@resend.dev';
+    const fromAddr = process.env.RESEND_FROM_EMAIL || process.env.SMTP_USER || 'noreply@startupbuild.tech';
     const fromName = process.env.SMTP_FROM_NAME || 'Startup CRM';
     const rawTo = String(mailOptions.to).replace(/^.*<|>/g, '').trim();
-    const from = fromAddr.includes('resend.dev') ? `${fromName} <onboarding@resend.dev>` : `${fromName} <${fromAddr}>`;
+    const from = `${fromName} <${fromAddr}>`;
     
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
