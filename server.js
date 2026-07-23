@@ -730,7 +730,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
     const currentIp = requestIp(req);
     let ipMismatched = false;
-    if (member.lastLoginIp && member.lastLoginIp !== currentIp) {
+    if (member.lastLoginIp && member.lastLoginIp !== currentIp && member.securityQuestion) {
       ipMismatched = true;
     }
 
@@ -776,18 +776,17 @@ app.post('/api/auth/login', async (req, res) => {
 </body>
 </html>`;
 
-          await mailer.sendMail({
+          // Non-blocking background send so login is instant
+          mailer.sendMail({
             from: `"${fromName}" <${fromAddr}>`,
             to: toEmail,
             subject: emailSubject,
             html: emailHtml,
-          });
-          console.log(`📧 Suspicious login alert email sent to ${toEmail}`);
-        } else {
-          console.warn('⚠️ SMTP not configured — skipping suspicious login alert email.');
+          }).then(() => console.log(`📧 Suspicious login alert email sent to ${toEmail}`))
+            .catch(err => console.error('Failed to send suspicious login email:', err));
         }
       } catch (err) {
-        console.error('Failed to send suspicious login email:', err);
+        console.error('Security email error:', err);
       }
     }
 
