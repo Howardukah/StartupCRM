@@ -68,19 +68,6 @@ app.use(express.json({ limit: '30mb' })); // 20MB attachment limit -> ~27MB once
 // access to server.js, package.json, .env, and any other server-side files.
 const PUBLIC_DIR = path.join(path.resolve('.'), 'public');
 
-// Subdomain routing: if host starts with "storage.", serve storage.html as default index
-app.get('/', (req, res, next) => {
-  const host = req.hostname || '';
-  if (host.toLowerCase().startsWith('storage.')) {
-    return res.sendFile(path.join(PUBLIC_DIR, 'storage.html'));
-  }
-  next(); // fallback to index.html (CRM login) served by express.static
-});
-
-app.get('/healthz', (req, res) => res.status(200).send('OK'));
-
-app.use(express.static(PUBLIC_DIR));
-
 // Belt-and-suspenders block for sensitive files in case they somehow end up
 // accessible via another route (e.g. during local dev without a public/ dir).
 const NEVER_SERVE = new Set([
@@ -96,6 +83,38 @@ app.use((req, res, next) => {
   if (NEVER_SERVE.has(base)) return res.status(404).end();
   next();
 });
+
+// Subdomain routing: if host starts with "storage.", serve storage.html as default index
+app.get('/', (req, res, next) => {
+  const host = req.hostname || '';
+  if (host.toLowerCase().startsWith('storage.')) {
+    return res.sendFile(path.join(PUBLIC_DIR, 'storage.html'));
+  }
+  return res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
+app.get('/healthz', (req, res) => res.status(200).send('OK'));
+
+// ── Clean URLs: redirect /page.html to /page and serve clean routes ─────
+app.get('/:page.html', (req, res, next) => {
+  const page = req.params.page;
+  if (!page || page.startsWith('api')) return next();
+  res.redirect(301, `/${page}`);
+});
+
+app.get('/:page', (req, res, next) => {
+  const page = req.params.page;
+  if (!page || page.includes('.') || page.startsWith('api')) return next();
+  const requested = `${page}.html`;
+  const lower = requested.toLowerCase();
+  if (NEVER_SERVE.has(lower)) return res.status(404).end();
+
+  res.sendFile(path.join(PUBLIC_DIR, requested), (err) => {
+    if (err) next(); // no matching .html file → fall through to 404 handler
+  });
+});
+
+app.use(express.static(PUBLIC_DIR));
 
 const EMPTY_DB = {
   team: [], clients: [], meetings: [], deletedMeetingIds: [],
@@ -130,12 +149,12 @@ const CLIENT_QUOTA_BYTES = 10 * 1024 * 1024;
 // ── File type safety ─────────────────────────────────────────────────────────
 // Blocked dangerous file extensions
 const BLOCKED_EXTENSIONS = new Set([
-  'exe','com','bat','cmd','sh','ps1','ps2','psm1','psd1',
-  'vbs','vbe','jse','ws','wsf','wsc','wsh',
-  'msi','msp','msc','reg','inf','scr','cpl','dll','sys',
-  'jar','class','py','rb','pl','php','asp','aspx','jsp',
-  'elf','out','bin','run','apk','app','ipa',
-  'lnk','pif','hta','htc','url','webloc',
+  'exe', 'com', 'bat', 'cmd', 'sh', 'ps1', 'ps2', 'psm1', 'psd1',
+  'vbs', 'vbe', 'jse', 'ws', 'wsf', 'wsc', 'wsh',
+  'msi', 'msp', 'msc', 'reg', 'inf', 'scr', 'cpl', 'dll', 'sys',
+  'jar', 'class', 'py', 'rb', 'pl', 'php', 'asp', 'aspx', 'jsp',
+  'elf', 'out', 'bin', 'run', 'apk', 'app', 'ipa',
+  'lnk', 'pif', 'hta', 'htc', 'url', 'webloc',
 ]);
 
 // Magic byte signatures for dangerous file types [offset, bytes_array]
@@ -184,7 +203,7 @@ let supabase = null;
 // ─── Write-through in-memory cache for the crm JSONB blob ──────────────────
 // WebSockets enabled: we push updates to clients instantly.
 // Result: Supabase is only read on server start. Cache stays perpetually warm.
-let _crmCache     = null;   // the cached data object
+let _crmCache = null;   // the cached data object
 let _crmCacheTime = 0;      // timestamp of last Supabase read (informational)
 
 async function getCrmData() {
@@ -195,7 +214,7 @@ async function getCrmData() {
   // Cache miss — fetch from Supabase (only happens once on server boot)
   const { data, error } = await supabase.from('crm').select('data').eq('id', 'main').single();
   if (error) throw new Error(error.message);
-  _crmCache     = data?.data || EMPTY_DB;
+  _crmCache = data?.data || EMPTY_DB;
   _crmCacheTime = Date.now();
   return structuredClone(_crmCache);
 }
@@ -249,7 +268,7 @@ async function setCrmData(data) {
   const { error } = await supabase.from('crm').upsert({ id: 'main', data });
   if (error) throw new Error(error.message);
   // Write-through: update cache instantly so the next read is always fresh.
-  _crmCache     = structuredClone(data);
+  _crmCache = structuredClone(data);
   _crmCacheTime = Date.now();
   // Broadcast ping to all connected WebSockets
   io.emit('db_changed');
@@ -313,20 +332,20 @@ async function appendActivity(entryOrEntries) {
   const entries = (Array.isArray(entryOrEntries) ? entryOrEntries : [entryOrEntries])
     .filter(Boolean)
     .map(e => ({
-      created_at:  e.time || new Date().toISOString(),
-      actor_id:    e.actorId   ? String(e.actorId).slice(0, 80)    : null,
-      actor_name:  e.actorName ? String(e.actorName).slice(0, 120) : null,
-      actor_type:  String(e.actorType  || 'system').slice(0, 30),
-      action:      String(e.action     || 'event').slice(0, 80),
-      target_type: e.targetType ? String(e.targetType).slice(0, 60)  : null,
-      target_id:   e.targetId   ? String(e.targetId).slice(0, 80)    : null,
+      created_at: e.time || new Date().toISOString(),
+      actor_id: e.actorId ? String(e.actorId).slice(0, 80) : null,
+      actor_name: e.actorName ? String(e.actorName).slice(0, 120) : null,
+      actor_type: String(e.actorType || 'system').slice(0, 30),
+      action: String(e.action || 'event').slice(0, 80),
+      target_type: e.targetType ? String(e.targetType).slice(0, 60) : null,
+      target_id: e.targetId ? String(e.targetId).slice(0, 80) : null,
       target_name: e.targetName ? String(e.targetName).slice(0, 120) : null,
-      text:        String(e.text || '').slice(0, 500),
-      ip_address:  String(e.ip   || '').slice(0, 45),
-      user_agent:  String(e.userAgent || '').slice(0, 240),
-      source:      String(e.source || 'server').slice(0, 20),
+      text: String(e.text || '').slice(0, 500),
+      ip_address: String(e.ip || '').slice(0, 45),
+      user_agent: String(e.userAgent || '').slice(0, 240),
+      source: String(e.source || 'server').slice(0, 20),
       // Scrub any sensitive keys from metadata before storing
-      metadata:    sanitizeMetadata(e.metadata || {}),
+      metadata: sanitizeMetadata(e.metadata || {}),
     }));
   if (!entries.length) return;
   const { error } = await supabase.from('activity_log').insert(entries);
@@ -587,14 +606,15 @@ function safeFilename(name) {
 app.get('/api/auth/check', async (req, res) => {
   try {
     const data = await getCrmData();
-    if (!data.team || !data.team.length) {
+    const hasAdmin = Array.isArray(data.team) && data.team.some(m => m && (m.role === 'Admin' || m.role === 'Super Admin'));
+    if (!data.team || !data.team.length || !hasAdmin) {
       return res.json({ hasData: false });
     }
     const team = data.team.map(m => ({ id: m.id, name: m.name }));
     res.json({ hasData: true, team });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: e.message });
+    console.error('auth check error:', e);
+    res.json({ hasData: true });
   }
 });
 
@@ -929,12 +949,12 @@ app.post('/api/profile', validateSession, async (req, res) => {
     const idx = (data.team || []).findIndex(m => m.id === req.userId);
     if (idx === -1) return res.status(404).json({ error: 'User not found.' });
 
-    if (name)          data.team[idx].name          = name;
-    if (birthday)      data.team[idx].birthday      = birthday;
-    if (sex)           data.team[idx].sex           = sex;
+    if (name) data.team[idx].name = name;
+    if (birthday) data.team[idx].birthday = birthday;
+    if (sex) data.team[idx].sex = sex;
     if (personalEmail) data.team[idx].personalEmail = personalEmail;
-    if (mobileNumber)  data.team[idx].mobileNumber  = mobileNumber;
-    if (photoDataUrl)  data.team[idx].photoDataUrl  = photoDataUrl;
+    if (mobileNumber) data.team[idx].mobileNumber = mobileNumber;
+    if (photoDataUrl) data.team[idx].photoDataUrl = photoDataUrl;
 
     if (securityQuestion) data.team[idx].securityQuestion = securityQuestion;
     if (securityAnswer) {
@@ -1042,7 +1062,7 @@ app.post('/api/db', validateSession, async (req, res) => {
       const canManageTeam = hasPermission(role, 'canManageTeam');
       const canAssignAdmins = hasPermission(role, 'canAssignAdmins');
       const teamList = incoming.team.filter(Boolean);
-      
+
       if (!canManageTeam) {
         console.warn(`[security] Non-authorized user ${req.userId} tried to write 'team' — ignored.`);
       } else {
@@ -1052,15 +1072,15 @@ app.post('/api/db', validateSession, async (req, res) => {
           const safeTeam = [];
           for (const m of teamList) {
             if (m && m.id && adminIds.has(m.id)) {
-               const foundAdmin = currentAdmins.find(admin => admin && admin.id === m.id);
-               if (foundAdmin) safeTeam.push(foundAdmin);
+              const foundAdmin = currentAdmins.find(admin => admin && admin.id === m.id);
+              if (foundAdmin) safeTeam.push(foundAdmin);
             } else if (m) {
-               if (m.role === 'Admin') m.role = 'Engineer';
-               safeTeam.push(m);
+              if (m.role === 'Admin') m.role = 'Engineer';
+              safeTeam.push(m);
             }
           }
           for (const admin of currentAdmins) {
-             if (admin && admin.id && !safeTeam.find(m => m && m.id === admin.id)) safeTeam.push(admin);
+            if (admin && admin.id && !safeTeam.find(m => m && m.id === admin.id)) safeTeam.push(admin);
           }
           incoming.team = safeTeam.filter(Boolean);
         } else {
@@ -1095,8 +1115,8 @@ app.post('/api/db', validateSession, async (req, res) => {
     if (hasPermission(me ? me.role : null, 'canSendProposals') || userIsAdmin) {
       merged.proposals = incoming.proposals || [];
       merged.mailTemplates = incoming.mailTemplates || [];
-    } else { 
-      merged.proposals = current.proposals || []; 
+    } else {
+      merged.proposals = current.proposals || [];
       merged.mailTemplates = current.mailTemplates || [];
     }
     if (userIsAdmin || (me && me.role === 'Admin')) {
@@ -1148,7 +1168,7 @@ app.get('/api/activity', activityLimiter, validateSession, async (req, res) => {
     if (!hasPermission(me ? me.role : null, 'canViewActivity')) return res.status(403).json({ error: 'Only Admins can view the activity log.' });
 
     // — Validate & sanitize query params ————————————————————
-    const page  = Math.max(1, parseInt(req.query.page  || '1',  10) || 1);
+    const page = Math.max(1, parseInt(req.query.page || '1', 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '50', 10) || 50));
     const offset = (page - 1) * limit;
 
@@ -1164,7 +1184,7 @@ app.get('/api/activity', activityLimiter, validateSession, async (req, res) => {
     // Date range — must parse as valid ISO date
     const parseDate = v => { if (!v) return null; const d = new Date(v); return isNaN(d.getTime()) ? null : d.toISOString(); };
     const fromDate = parseDate(req.query.from);
-    const toDate   = parseDate(req.query.to);
+    const toDate = parseDate(req.query.to);
 
     // Free-text search — escaped inside ILIKE pattern
     const searchQ = req.query.q ? String(req.query.q).replace(/[%_\\]/g, c => '\\' + c).slice(0, 100) : null;
@@ -1176,11 +1196,11 @@ app.get('/api/activity', activityLimiter, validateSession, async (req, res) => {
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (actorFilter)  query = query.eq('actor_id', actorFilter);
+    if (actorFilter) query = query.eq('actor_id', actorFilter);
     if (actionFilter) query = query.ilike('action', actionFilter + '%');
-    if (fromDate)     query = query.gte('created_at', fromDate);
-    if (toDate)       query = query.lte('created_at', toDate);
-    if (searchQ)      query = query.or(`text.ilike.%${searchQ}%,actor_name.ilike.%${searchQ}%,target_name.ilike.%${searchQ}%`);
+    if (fromDate) query = query.gte('created_at', fromDate);
+    if (toDate) query = query.lte('created_at', toDate);
+    if (searchQ) query = query.or(`text.ilike.%${searchQ}%,actor_name.ilike.%${searchQ}%,target_name.ilike.%${searchQ}%`);
 
     const { data: rows, error, count } = await query;
     if (error) throw new Error(error.message);
@@ -1192,9 +1212,9 @@ app.get('/api/activity', activityLimiter, validateSession, async (req, res) => {
       .select('action')
       .gte('created_at', todayStart.toISOString());
 
-    const loginsToday   = (todayStats || []).filter(r => r.action === 'auth.login').length;
-    const storageToday  = (todayStats || []).filter(r => r.action.startsWith('storage.')).length;
-    const teamToday     = (todayStats || []).filter(r => r.action.startsWith('team.')).length;
+    const loginsToday = (todayStats || []).filter(r => r.action === 'auth.login').length;
+    const storageToday = (todayStats || []).filter(r => r.action.startsWith('storage.')).length;
+    const teamToday = (todayStats || []).filter(r => r.action.startsWith('team.')).length;
 
     res.json({
       ok: true,
@@ -1376,7 +1396,7 @@ app.post('/api/save-plan', validateSession, async (req, res) => {
   try {
     const { projectId, filename, fileBase64 } = req.body || {};
     if (!projectId || !filename || !fileBase64) return res.status(400).json({ error: 'projectId, filename, and fileBase64 are required.' });
-    
+
     if (!b2Client) {
       throw new Error('Backblaze B2 is not configured on this server.');
     }
@@ -1413,7 +1433,7 @@ app.get('/api/has-plan/:projectId', validateSession, async (req, res) => {
 app.get('/api/get-plan/:projectId', validateSession, async (req, res) => {
   try {
     const projectId = req.params.projectId;
-    
+
     if (!b2Client) {
       throw new Error('Backblaze B2 is not configured on this server.');
     }
@@ -1421,7 +1441,7 @@ app.get('/api/get-plan/:projectId', validateSession, async (req, res) => {
     const data = await getCrmData();
     const project = (data.projects || []).find(p => p.id === projectId);
     const filename = project?.planFileName;
-    
+
     if (!filename) {
       return res.status(404).json({ error: 'No plan file saved for this project.' });
     }
@@ -1435,7 +1455,7 @@ app.get('/api/get-plan/:projectId', validateSession, async (req, res) => {
       Bucket: B2_BUCKET,
       Key: storagePath,
     }));
-    
+
     const stream = response.Body;
     const buffer = await new Promise((resolve, reject) => {
       const chunks = [];
@@ -1648,7 +1668,7 @@ app.post('/api/send-invite-email', validateSession, async (req, res) => {
       return res.json({ ok: true, skipped: true, reason: 'SMTP not configured.' });
     }
 
-    const appUrl   = process.env.APP_URL || 'http://localhost:8787';
+    const appUrl = process.env.APP_URL || 'http://localhost:8787';
     const loginUrl = appUrl.replace(/\/$/, '') + '/index.html';
     const fromName = process.env.SMTP_FROM_NAME || 'Startup CRM';
     const fromAddr = process.env.SMTP_USER;
@@ -1710,7 +1730,7 @@ app.post('/api/send-invite-email', validateSession, async (req, res) => {
 
     await mailer.sendMail({
       from: `"${fromName}" <${fromAddr}>`,
-      to:   `"${toName}" <${toEmail}>`,
+      to: `"${toName}" <${toEmail}>`,
       subject: sendSubject,
       html: sendHtml,
     });
@@ -1732,9 +1752,9 @@ app.post('/api/send-invite-email', validateSession, async (req, res) => {
 /** Resolve the correct Zoho IMAP/SMTP host based on the user's email TLD. */
 function getZohoHosts(email) {
   const lc = (email || '').toLowerCase();
-  if (lc.endsWith('.eu') || lc.includes('@zoho.eu')) return { imap: 'imap.zoho.eu',  smtp: 'smtp.zoho.eu'  };
-  if (lc.endsWith('.in') || lc.includes('@zoho.in') || lc.includes('.in>')) return { imap: 'imap.zoho.in',  smtp: 'smtp.zoho.in'  };
-  
+  if (lc.endsWith('.eu') || lc.includes('@zoho.eu')) return { imap: 'imap.zoho.eu', smtp: 'smtp.zoho.eu' };
+  if (lc.endsWith('.in') || lc.includes('@zoho.in') || lc.includes('.in>')) return { imap: 'imap.zoho.in', smtp: 'smtp.zoho.in' };
+
   // Default fallback matching the main organization's Zoho SMTP host
   const mainHost = (process.env.SMTP_HOST || 'smtp.zoho.com').toLowerCase();
   if (mainHost.endsWith('.in')) {
@@ -1766,9 +1786,9 @@ app.get('/api/mail/settings', validateSession, async (req, res) => {
     if (!raw) return res.json({ configured: false, email: '', name: '', replyto: '' });
     res.json({
       configured: true,
-      email:    raw.email    || '',
-      name:     raw.name     || '',
-      replyto:  raw.replyto  || '',
+      email: raw.email || '',
+      name: raw.name || '',
+      replyto: raw.replyto || '',
       // password intentionally omitted — client shows a placeholder
     });
   } catch (e) {
@@ -1794,8 +1814,8 @@ app.post('/api/mail/settings', validateSession, async (req, res) => {
 
     data.zohoMailSettings[req.userId] = {
       email,
-      name:              name     || '',
-      replyto:           replyto  || '',
+      name: name || '',
+      replyto: replyto || '',
       encryptedPassword: encryptedPass,
     };
     await setCrmData(data);
@@ -1855,24 +1875,24 @@ app.get('/api/mail/sync', validateSession, async (req, res) => {
               const parsed = await simpleParser(msg.source);
               const fromAddr = parsed.from?.value?.[0] || {};
               emails.push({
-                id:        String(msg.uid),
+                id: String(msg.uid),
                 folder,
-                fromName:  fromAddr.name  || fromAddr.address || 'Unknown',
+                fromName: fromAddr.name || fromAddr.address || 'Unknown',
                 fromEmail: fromAddr.address || '',
-                to:        parsed.to?.text  || '',
-                cc:        parsed.cc?.text  || '',
-                subject:   parsed.subject   || '(No Subject)',
-                date:      parsed.date ? parsed.date.toISOString() : new Date().toISOString(),
-                body:      parsed.text || (parsed.html ? parsed.html.replace(/<[^>]+>/g, ' ') : ''),
-                unread:    !msg.flags.has('\\Seen'),
+                to: parsed.to?.text || '',
+                cc: parsed.cc?.text || '',
+                subject: parsed.subject || '(No Subject)',
+                date: parsed.date ? parsed.date.toISOString() : new Date().toISOString(),
+                body: parsed.text || (parsed.html ? parsed.html.replace(/<[^>]+>/g, ' ') : ''),
+                unread: !msg.flags.has('\\Seen'),
                 // Metadata only here — actual bytes are fetched on demand via /api/mail/attachment
                 // to avoid re-downloading every attachment just to render the inbox list.
                 attachments: (parsed.attachments || [])
                   .filter(a => a.contentDisposition !== 'inline' || !a.cid) // skip inline signature/logo images
                   .map((a, i) => ({
-                    index:       i,
-                    filename:    a.filename || `attachment-${i + 1}`,
-                    size:        a.size || (a.content ? a.content.length : 0),
+                    index: i,
+                    filename: a.filename || `attachment-${i + 1}`,
+                    size: a.size || (a.content ? a.content.length : 0),
                     contentType: a.contentType || 'application/octet-stream',
                   })),
               });
@@ -1925,8 +1945,8 @@ app.post('/api/mail/mark-read', validateSession, async (req, res) => {
 // GET  /api/mail/attachment?folder=inbox&uid=123&index=0  — download a single attachment's bytes
 app.get('/api/mail/attachment', validateSession, async (req, res) => {
   const folder = (req.query.folder || 'inbox').toLowerCase();
-  const uid    = parseInt(req.query.uid, 10);
-  const index  = parseInt(req.query.index, 10);
+  const uid = parseInt(req.query.uid, 10);
+  const index = parseInt(req.query.index, 10);
   if (!uid || Number.isNaN(index)) {
     return res.status(400).json({ error: 'folder, uid, and index are required.' });
   }
@@ -1991,11 +2011,11 @@ app.post('/api/mail/send', validateSession, async (req, res) => {
         const buffer = Buffer.from(att.content, 'base64');
         totalBytes += buffer.length;
         if (totalBytes > MAIL_MAX_ATTACH_BYTES) {
-          return res.status(400).json({ error: `Attachments exceed the ${(MAIL_MAX_ATTACH_BYTES / (1024*1024)).toFixed(0)}MB limit.` });
+          return res.status(400).json({ error: `Attachments exceed the ${(MAIL_MAX_ATTACH_BYTES / (1024 * 1024)).toFixed(0)}MB limit.` });
         }
         mailAttachments.push({
-          filename:    att.filename,
-          content:     buffer,
+          filename: att.filename,
+          content: buffer,
           contentType: att.contentType || 'application/octet-stream',
         });
       }
@@ -2010,10 +2030,10 @@ app.post('/api/mail/send', validateSession, async (req, res) => {
     const { smtp } = getZohoHosts(saved.email);
 
     const transporter = nodemailer.createTransport({
-      host:   smtp,
-      port:   465,
+      host: smtp,
+      port: 465,
       secure: true,
-      auth:   { user: saved.email, pass: password },
+      auth: { user: saved.email, pass: password },
     });
 
     const fromLabel = saved.name
@@ -2021,12 +2041,12 @@ app.post('/api/mail/send', validateSession, async (req, res) => {
       : saved.email;
 
     await transporter.sendMail({
-      from:    fromLabel,
+      from: fromLabel,
       to,
       ...(cc ? { cc } : {}),
       replyTo: saved.replyto || saved.email,
       subject: subject || '(No Subject)',
-      text:    body || '',
+      text: body || '',
       ...(mailAttachments.length ? { attachments: mailAttachments } : {}),
     });
 
@@ -2052,9 +2072,9 @@ let b2Client = null;
 const B2_BUCKET = process.env.B2_BUCKET_NAME || '';
 
 async function initB2() {
-  const keyId     = process.env.B2_KEY_ID;
-  const appKey    = process.env.B2_APP_KEY;
-  const endpoint  = process.env.B2_ENDPOINT; // e.g. https://s3.us-west-004.backblazeb2.com
+  const keyId = process.env.B2_KEY_ID;
+  const appKey = process.env.B2_APP_KEY;
+  const endpoint = process.env.B2_ENDPOINT; // e.g. https://s3.us-west-004.backblazeb2.com
   if (!keyId || !appKey || !endpoint || !B2_BUCKET) {
     throw new Error('Backblaze B2 env vars missing: B2_KEY_ID, B2_APP_KEY, B2_ENDPOINT, B2_BUCKET_NAME');
   }
@@ -2233,7 +2253,7 @@ app.get('/api/storage/bucket/:token/files', async (req, res) => {
       if (proj && proj.assetBucketConfig?.customQuotaBytes) {
         quotaBytes = parseInt(proj.assetBucketConfig.customQuotaBytes);
       }
-    } catch(e) {}
+    } catch (e) { }
 
     res.json({ ok: true, files: files || [], usedBytes, quotaBytes });
     appendActivity(makeActivityEntry(req, {
@@ -2271,7 +2291,7 @@ async function getBucketByToken(token) {
       .select('*')
       .eq('token', token)
       .single();
-    
+
     if (!error && bucket) {
       bucketTokenCache.set(token, {
         bucket,
@@ -2304,7 +2324,7 @@ async function getAssetById(assetId) {
       .select('id, bucket_id, storage_path, content_type, project_id, filename')
       .eq('id', assetId)
       .single();
-    
+
     if (!error && asset) {
       assetCache.set(assetId, {
         asset,
@@ -2332,14 +2352,14 @@ app.get('/api/storage/bucket/:token/files/:assetId/preview', async (req, res) =>
     }
 
     const bucket = await getBucketByToken(req.params.token);
-      const bErr = !bucket;
+    const bErr = !bucket;
     if (bErr || !bucket) {
       return res.status(404).json({ error: 'Bucket not found.' });
     }
     if (bucket.revoked) return res.status(403).json({ error: 'This link has been restricted.' });
 
     const asset = await getAssetById(req.params.assetId);
-      const aErr = !asset;
+    const aErr = !asset;
     if (aErr || !asset) {
       return res.status(404).json({ error: 'File not found.' });
     }
@@ -2351,7 +2371,7 @@ app.get('/api/storage/bucket/:token/files/:assetId/preview', async (req, res) =>
     }
 
     const url = await signedDownloadUrl(asset.storage_path);
-    
+
     // Cache for 50 minutes (since B2 signed URL is valid for 60 mins)
     previewUrlCache.set(cacheKey, {
       url,
@@ -2375,7 +2395,7 @@ app.post('/api/storage/upload/:token', storageUploadLimiter, upload.array('files
     if (!files.length) return res.status(400).json({ error: 'No files received.' });
 
     const bucket = await getBucketByToken(req.params.token);
-      const bErr = !bucket;
+    const bErr = !bucket;
 
     if (bErr || !bucket) return res.status(404).json({ error: 'Asset bucket not found.' });
     if (bucket.revoked) return res.status(403).json({ error: 'This upload link has been restricted.' });
@@ -2394,7 +2414,7 @@ app.post('/api/storage/upload/:token', storageUploadLimiter, upload.array('files
     }
 
     const { data: existing } = await supabase.from('assets').select('size_bytes').eq('bucket_id', bucket.id);
-    const usedBytes  = (existing || []).reduce((s, a) => s + parseInt(a.size_bytes || 0), 0);
+    const usedBytes = (existing || []).reduce((s, a) => s + parseInt(a.size_bytes || 0), 0);
     const incomingBytes = files.reduce((s, f) => s + f.size, 0);
     if (usedBytes + incomingBytes > quotaBytes) {
       return res.status(413).json({
@@ -2551,7 +2571,7 @@ app.get('/api/storage/assets/:assetId/download', validateSession, async (req, re
   try {
     let asset, url;
     const cached = authDownloadCache.get(req.params.assetId);
-    
+
     if (cached && Date.now() < cached.expiresAt) {
       asset = cached.asset;
       url = cached.url;
@@ -2562,10 +2582,10 @@ app.get('/api/storage/assets/:assetId/download', validateSession, async (req, re
         .eq('id', req.params.assetId)
         .single();
       if (error || !data) return res.status(404).json({ error: 'Asset not found.' });
-      
+
       asset = data;
       url = await signedDownloadUrl(asset.storage_path);
-      
+
       authDownloadCache.set(req.params.assetId, {
         asset,
         url,
@@ -2755,13 +2775,13 @@ app.post('/api/projects/create-asset-bucket', validateSession, async (req, res) 
       project.clientName ||
       client.name
     );
-    
+
     // Resolve name or use empty string if unknown
     let toName = clientNameReq || clientFromProject || (project && project.name ? project.name + ' Team' : null);
     if (!toName || toName.trim() === '' || toName === 'there') {
       toName = '';
     }
-    
+
     const projectDisplayName = project ? (project.name || project.title) : (reqProjectName || projectId);
 
     if (toEmail && project) {
@@ -2774,7 +2794,7 @@ app.post('/api/projects/create-asset-bucket', validateSession, async (req, res) 
           const fromName = process.env.SMTP_FROM_NAME || 'Startup Build';
           const fromAddr = process.env.SMTP_USER;
           const supportEmail = process.env.SUPPORT_EMAIL || 'support@startupbuild.tech';
-          
+
           const greetingH1 = toName ? `Welcome aboard, ${toName}!` : 'Welcome aboard!';
           const greetingP = toName ? `Hi <strong>${toName}</strong>, your dedicated file upload portal has been set up so you can share project files securely with our team. Click below to open it:` : `Your dedicated file upload portal has been set up so you can share project files securely with our team. Click below to open it:`;
           const emailSubject = toName ? `Welcome aboard, ${toName} -- your upload portal is ready` : `Welcome aboard -- your upload portal is ready`;
@@ -2845,7 +2865,7 @@ app.post('/api/projects/create-asset-bucket', validateSession, async (req, res) 
 
           await mailer.sendMail({
             from: `"${fromName}" <${fromAddr}>`,
-            to:   toName ? `"${toName}" <${toEmail}>` : toEmail,
+            to: toName ? `"${toName}" <${toEmail}>` : toEmail,
             subject: portalSubject,
             html: portalHtml,
           });
@@ -3060,7 +3080,7 @@ app.post('/api/asset-buckets/:bucketId/regenerate', validateSession, async (req,
         // 3. Delete from Supabase
         await supabase.from('assets').delete().eq('bucket_id', bucket.id);
       }
-      
+
       // Activity Log
       const project = (crmData.projects || []).find(p => p.id === bucket.project_id);
       logActivity(crmData, {
@@ -3115,7 +3135,7 @@ app.post('/api/asset-buckets/:bucketId/regenerate', validateSession, async (req,
           const supportEmail = process.env.SUPPORT_EMAIL || 'support@startupbuild.tech';
 
           const greetingH1 = toName ? `Your regenerated upload portal is ready, ${toName}!` : 'Your regenerated upload portal is ready!';
-          
+
           let intactText = '';
           if (!deleteAssets) {
             intactText = `<p style="margin: 0 0 18px; line-height: 1.65; font-size: 14px; color: #12A3B4; font-weight: 800;">Your assets are fully protected and intact.</p>`;
@@ -3191,7 +3211,7 @@ app.post('/api/asset-buckets/:bucketId/regenerate', validateSession, async (req,
 
           await mailer.sendMail({
             from: `"${fromName}" <${fromAddr}>`,
-            to:   toName ? `"${toName}" <${toEmail}>` : toEmail,
+            to: toName ? `"${toName}" <${toEmail}>` : toEmail,
             subject: portalSubject,
             html: portalHtml,
           });
@@ -3221,7 +3241,7 @@ app.get('/api/asset-buckets/all', validateSession, async (req, res) => {
 
     // Fetch sizes for all assets
     const { data: assets } = await supabase.from('assets').select('bucket_id, size_bytes');
-    
+
     const sizeMap = {};
     if (assets) {
       assets.forEach(a => {
@@ -3247,7 +3267,7 @@ app.get('/api/asset-buckets/all', validateSession, async (req, res) => {
 app.get('/api/asset-bucket/validate/:token', async (req, res) => {
   try {
     const bucket = await getBucketByToken(req.params.token);
-      const error = !bucket;
+    const error = !bucket;
 
     if (error || !bucket) return res.status(404).json({ valid: false, reason: 'Asset bucket not found.' });
     if (bucket.revoked) return res.status(403).json({ valid: false, reason: 'This upload link has been restricted.' });
@@ -3300,7 +3320,7 @@ const bucketAuthLimiter = rateLimit({
           });
         }
       }
-    } catch(e) {
+    } catch (e) {
       console.error('Error in auth limiter handler:', e);
     }
     res.status(options.statusCode).json(options.message);
@@ -3314,7 +3334,7 @@ app.post('/api/asset-bucket/auth/:token', bucketAuthLimiter, async (req, res) =>
     }
 
     const bucket = await getBucketByToken(req.params.token);
-      const error = !bucket;
+    const error = !bucket;
 
     if (error || !bucket) return res.status(404).json({ ok: false, error: 'Upload link not found.' });
     if (bucket.revoked) return res.status(403).json({ ok: false, error: 'This upload link has been restricted.' });
@@ -3349,7 +3369,7 @@ app.post('/api/asset-bucket/:token/upload', bucketUploadLimiter, upload.array('f
 
     // Validate bucket token
     const bucket = await getBucketByToken(req.params.token);
-      const bErr = !bucket;
+    const bErr = !bucket;
 
     if (bErr || !bucket) return res.status(404).json({ error: 'Asset bucket not found.' });
     if (bucket.revoked) return res.status(403).json({ error: 'This upload link has been restricted.' });
@@ -3461,7 +3481,7 @@ app.get('/api/storage/all-assets', validateSession, async (req, res) => {
   try {
     const crmData = await getCrmData();
     const me = (crmData.team || []).find(m => m.id === req.userId);
-    
+
     // Admins see ALL assets. Others see only assets from projects they're part of.
     let query = supabase.from('assets').select('id, project_id, bucket_id, filename, size_bytes, content_type, uploaded_at, client_name');
 

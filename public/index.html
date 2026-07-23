@@ -17,7 +17,7 @@
         const profilePending = localStorage.getItem('crm-profile-setup-pending');
         // If session exists but profile setup is still pending, stay on index.html
         if (token && !profilePending) {
-          window.location.replace('dashboard.html');
+          window.location.replace('/dashboard');
         }
         // Always dark — remove any saved light theme preference
         try { localStorage.removeItem('crm-theme'); } catch (e) { }
@@ -1887,24 +1887,26 @@
 
     (async function init() {
       runGreetingAnimation();
+      const userInput = document.getElementById('signin-user');
+      if (userInput) {
+        userInput.value = '';
+        userInput.onkeydown = e => { if (e.key === 'Enter') submitEmail(); };
+      }
+      document.getElementById('signin-email-step').style.display = 'block';
+      document.getElementById('signin-password-step').style.display = 'none';
+      showStep('signin');
+
       try {
-        const res = await fetch(API_BASE + '/api/auth/check');
-        const data = await res.json();
-        if (data.hasData) {
-          const userInput = document.getElementById('signin-user');
-          userInput.value = '';
-          userInput.onkeydown = e => { if (e.key === 'Enter') submitEmail(); };
-          document.getElementById('signin-email-step').style.display = 'block';
-          document.getElementById('signin-password-step').style.display = 'none';
-          showStep('signin');
-        } else {
-          db = structuredClone(EMPTY_DB);
-          showStep('setup');
+        const res = await fetch('/api/auth/check');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.hasData === false) {
+            db = structuredClone(EMPTY_DB);
+            showStep('setup');
+          }
         }
       } catch (e) {
         console.error('Server check error:', e);
-        db = structuredClone(EMPTY_DB);
-        showStep('setup');
       }
     })();
 
@@ -2224,7 +2226,7 @@
       sessionStorage.setItem('crm-session-token', token);
       localStorage.setItem('crm-current-user', userId);
       localStorage.setItem('crm-session-token', token);
-      window.location.replace('dashboard.html');
+      window.location.replace('/dashboard');
     }
   </script>
 

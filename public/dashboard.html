@@ -11063,7 +11063,7 @@
       sessionStorage.removeItem('crm-session-token');
       localStorage.removeItem('crm-current-user');
       localStorage.removeItem('crm-session-token');
-      window.location.href = 'index.html';
+      window.location.href = '/';
     }
     /* ============ CUSTOM SELECT DROPDOWNS ============ */
     function syncCustomSelects(select) {
@@ -11214,7 +11214,7 @@
         sessionStorage.setItem('crm-current-user', localStorage.getItem('crm-current-user'));
       }
       const userId = sessionStorage.getItem('crm-current-user');
-      if (!userId) { window.location.href = 'index.html'; return; }
+      if (!userId) { window.location.href = '/'; return; }
       if (window.Notification && Notification.permission !== "granted" && Notification.permission !== "denied") {
         Notification.requestPermission();
       }
@@ -14749,7 +14749,7 @@
         sessionStorage.removeItem('crm-session-token');
         localStorage.removeItem('crm-current-user');
         localStorage.removeItem('crm-session-token');
-        window.location.href = 'index.html';
+        window.location.href = '/';
       }, 800);
     }
 
@@ -22189,7 +22189,7 @@
           clearInterval(idleInterval);
           removeCountdownToast();
           if (typeof backToSignIn === 'function') backToSignIn();
-          else window.location.href = 'index.html';
+          else window.location.href = '/';
         }
       }, 1000);
 
