@@ -1,0 +1,1459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Files &amp; Assets — Startup Build</title>
+<link rel="preconnect" href="https://rsms.me/">
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('crm-theme');
+      if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    } catch (e) { }
+  })();
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+/* ══════════════════════════════════════════════════════════
+   THEME TOKENS
+   :root            = LIGHT theme (default, no data-theme attr)
+   [data-theme=dark]= DARK theme
+   Fixed --header-* and --auth-* tokens are NOT redefined in the
+   dark block on purpose: the top nav and the auth/splash screen
+   are intentionally always-dark surfaces in both modes, so their
+   own text/background pairs must stay constant instead of
+   inheriting the app-wide --text/--bg tokens (that mismatch was
+   what made things disappear on toggle).
+   ══════════════════════════════════════════════════════════ */
+:root {
+  /* App surface (LIGHT) */
+  --bg: #F7F7F5;
+  --surface: #FFFFFF;
+  --surface-2: #F1F1EF;
+  --border: #E3E3E0;
+  --border-strong: #D0D0CC;
+  --text: #16171A;
+  --text-muted: #5C5E58;
+  --text-subtle: #83837C;
+  --chip-bg: rgba(0, 0, 0, 0.04);
+  --hover-bg: rgba(0, 0, 0, 0.035);
+
+  /* Brand / semantic (constant across themes) */
+  --accent: #12A3B4;
+  --accent-ink: #0B6B76;
+  --accent-bright: #2FD6E4;
+  --blue: #2F6BFF;
+  --green: #12A45C;
+  --amber: #D08700;
+  --red: #D63B3B;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow-sm: 0 1px 0 rgba(17, 17, 17, .04), 0 1px 2px rgba(17, 17, 17, .04);
+  --shadow-md: 0 6px 24px -8px rgba(17, 17, 17, .15), 0 2px 4px rgba(17, 17, 17, .05);
+  --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --logo-text: #111111;
+  --logo-dot: #12A3B4;
+  --logo-font-weight: 900;
+  --logo-font-size: 18px;
+
+  /* Header (top nav) surface — now follows the app theme */
+  --header-bg: #FFFFFF;
+  --header-border: #E3E3E0;
+  --header-surface: rgba(0,0,0,0.04);
+  --header-text: #16171A;
+  --header-text-muted: #5C5E58;
+  --header-hover: rgba(0,0,0,0.06);
+  --header-hover-border: rgba(0,0,0,0.14);
+
+  /* Fixed always-dark surface (auth / splash screen) — stays constant in both themes */
+  --auth-bg: #07070A;
+  --auth-text: #F8FAFC;
+  --auth-muted: #A4A6A2;
+
+  /* Custom variables for storage.html mapped to CRM tokens */
+  --brand-teal: var(--accent);
+  --brand-dark: #000000;
+  --brand-mid: var(--accent-ink);
+  --brand-light: var(--accent-bright);
+  --sidebar-bg: var(--surface-2);
+  --card-bg: var(--surface);
+  --card-hover: var(--surface-2);
+  --border-glow: rgba(18, 163, 180, 0.2);
+  --danger: var(--red);
+  --font-title: var(--sans);
+  --font-body: var(--sans);
+  --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html[data-theme="dark"] {
+  --bg: #101214;
+  --surface: #1A1D20;
+  --surface-2: #16181B;
+  --border: #2B2E32;
+  --border-strong: #3C4045;
+  --text: #F2F2EF;
+  --text-muted: #A4A6A2;
+  --text-subtle: #75766F;
+  --chip-bg: rgba(255, 255, 255, 0.05);
+  --hover-bg: rgba(255, 255, 255, 0.04);
+
+  /* Header goes back to black/white-text in dark mode */
+  --header-bg: #000000;
+  --header-border: rgba(255,255,255,0.10);
+  --header-surface: rgba(255,255,255,0.05);
+  --header-text: #FFFFFF;
+  --header-text-muted: rgba(255,255,255,0.62);
+  --header-hover: rgba(255,255,255,0.1);
+  --header-hover-border: rgba(255,255,255,0.18);
+  --shadow-sm: 0 1px 0 rgba(0, 0, 0, .3), 0 1px 2px rgba(0, 0, 0, .3);
+  --shadow-md: 0 6px 24px -8px rgba(0, 0, 0, .5), 0 2px 4px rgba(0, 0, 0, .3);
+  --logo-text: #F2F2EF;
+  --logo-dot: #2FD6E4;
+
+  --sidebar-bg: var(--surface-2);
+  --card-bg: var(--surface);
+  --card-hover: var(--surface-2);
+  --border-glow: rgba(47, 214, 228, 0.3);
+}
+
+body{
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ── Auth Screen (always the fixed dark splash palette, in both app themes) ── */
+@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes spinRing{to{transform:rotate(360deg)}}
+@keyframes slideInRight{
+  from{opacity:0;transform:translateX(100%)}
+  to{opacity:1;transform:translateX(0)}
+}
+@keyframes quoteGlow{
+  0%,100%{opacity:0.8;text-shadow:0 0 12px rgba(47,214,228,0.15)}
+  50%{opacity:1;text-shadow:0 0 24px rgba(47,214,228,0.45);color:#fff}
+}
+@keyframes ambientOrb{
+  0%,100%{transform:scale(1);opacity:0.45}
+  50%{transform:scale(1.2);opacity:0.75}
+}
+#auth-screen{
+  position:fixed;inset:0;z-index:999;
+  display:flex;
+  background:var(--auth-bg);
+  overflow:hidden;
+}
+#auth-screen .orb{
+  position:absolute;border-radius:50%;pointer-events:none;
+  animation:ambientOrb 7s ease-in-out infinite;
+}
+#auth-screen .orb-1{
+  width:600px;height:600px;
+  background:radial-gradient(circle,rgba(18,163,180,0.11) 0%,transparent 70%);
+  top:-160px;left:-160px;animation-delay:0s;
+}
+#auth-screen .orb-2{
+  width:500px;height:500px;
+  background:radial-gradient(circle,rgba(4,1,62,0.55) 0%,transparent 70%);
+  bottom:-100px;left:30%;animation-delay:3.5s;
+}
+
+/* Center quote zone */
+.auth-quote-zone{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:60px;
+  z-index:2;
+}
+.auth-topbar{
+  position:absolute;top:0;left:0;right:0;height:64px;
+  display:flex;align-items:center;
+  padding:0 32px;
+  z-index:4;
+}
+.auth-brand{
+  font-family:var(--font-title);font-size:var(--logo-font-size);font-weight:var(--logo-font-weight);
+  letter-spacing:0;color:var(--auth-text);
+  display:inline-flex;align-items:center;gap:0;
+}
+.auth-brand span{color:var(--logo-dot);display:inline-block;margin-left:0;padding-left:0}
+@media (min-width: 860px) {
+  .auth-topbar { padding: 0 48px; }
+}
+.auth-quote-wrap{
+  position:relative;max-width:560px;text-align:center;
+}
+.auth-quote-mark{
+  font-family:Georgia,serif;font-size:80px;line-height:0.6;
+  color:var(--brand-teal);opacity:0.18;
+  display:block;margin-bottom:8px;
+  user-select:none;
+}
+.auth-quote-text{
+  font-family:var(--font-title);font-size:26px;font-weight:700;
+  line-height:1.45;letter-spacing:-0.02em;
+  color:var(--auth-text);
+  opacity:0.88;
+  font-style:italic;
+  animation:quoteGlow 3s ease-in-out infinite;
+}
+.auth-quote-author{
+  margin-top:20px;font-size:13px;font-weight:600;
+  color:var(--brand-teal);letter-spacing:0.06em;text-transform:uppercase;
+  opacity:0.75;
+  animation:quoteGlow 3s ease-in-out infinite;
+}
+
+/* Floating side notification style */
+.auth-panel{
+  position:absolute;
+  top:24px;right:24px;
+  width:360px;
+  background:rgba(10,10,20,0.85);
+  backdrop-filter:blur(24px);
+  border:1px solid rgba(47,214,228,0.2);
+  border-radius:16px;
+  display:flex;flex-direction:row;
+  align-items:center;
+  gap:16px;
+  padding:16px 20px;
+  z-index:3;
+  animation:slideInRight 0.55s cubic-bezier(0.22,1,0.36,1);
+  box-shadow:0 16px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(47, 214, 228, 0.1);
+}
+/* Avatar ring */
+.auth-ring-wrap{
+  position:relative;width:58px;height:58px;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.auth-ring{
+  position:absolute;inset:0;border-radius:50%;
+  border:2px solid transparent;
+  border-top-color:var(--brand-teal);
+  border-right-color:rgba(47,214,228,0.3);
+  animation:spinRing 1.1s linear infinite;
+}
+.auth-ring-inner{
+  position:absolute;inset:4px;border-radius:50%;
+  border:1px solid transparent;
+  border-bottom-color:rgba(47,214,228,0.25);
+  animation:spinRing 1.8s linear infinite reverse;
+}
+.auth-avatar{
+  width:42px;height:42px;border-radius:50%;
+  background:linear-gradient(135deg,var(--brand-mid),var(--brand-dark));
+  border:2px solid rgba(47,214,228,0.3);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-title);font-size:16px;font-weight:800;
+  color:#fff;
+  box-shadow:0 0 20px rgba(18, 163, 180, 0.25);
+}
+.auth-info{
+  display:flex;flex-direction:column;
+  gap:3px;flex:1;
+  text-align:left;
+}
+.auth-label{
+  font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+  color:var(--brand-teal);
+  animation:fadeUp 0.5s ease 0.2s both;
+}
+.auth-name{
+  font-family:var(--font-title);font-size:16px;font-weight:800;letter-spacing:-0.01em;
+  color:#fff;
+  animation:fadeUp 0.5s ease 0.3s both;
+}
+.auth-status{
+  font-size:12px;color:var(--auth-muted);
+  animation:fadeUp 0.5s ease 0.4s both;
+}
+/* Not-logged-in state */
+.auth-unauth{
+  display:flex;flex-direction:row;align-items:center;gap:16px;
+  text-align:left;width:100%;
+}
+.auth-unauth-icon{
+  width:48px;height:48px;border-radius:12px;
+  background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);
+  display:grid;place-items:center;font-size:20px;flex-shrink:0;
+}
+.auth-unauth h2{
+  font-family:var(--font-title);font-size:15px;font-weight:800;color:#fff;margin-bottom:2px;
+}
+.auth-unauth p{
+  font-size:12px;color:var(--auth-muted);line-height:1.4;margin-bottom:8px;
+}
+.auth-unauth a{
+  padding:6px 14px;
+  background:linear-gradient(135deg,var(--brand-teal),var(--brand-mid));
+  color:#fff;border-radius:8px;font-family:var(--font-title);
+  font-size:12px;font-weight:700;text-decoration:none;
+  display:inline-block;transition:var(--transition);
+  box-shadow:0 4px 12px rgba(18,163,180,0.2);
+  align-self:flex-start;
+}
+.auth-unauth a:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(18,163,180,0.3)}
+
+/* ── Main App Layout ── */
+#app-container{display:none;width:100%;height:100vh;position:relative;z-index:1;flex-direction:column}
+#app-container.ready{display:flex}
+
+/* ── Top Nav (follows the app theme: white in light mode, black in dark mode) ── */
+.top-nav{
+  height:64px;padding:0 32px;border-bottom:1px solid var(--header-border);
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--header-bg);
+  backdrop-filter:blur(10px);
+  position:relative;z-index:10;flex-shrink:0;
+}
+.nav-left{display:flex;align-items:center;gap:20px}
+.nav-logo{
+  font-family:var(--font-title);font-size:var(--logo-font-size);font-weight:var(--logo-font-weight);
+  letter-spacing:0;color:var(--header-text);
+  display:inline-flex;align-items:center;gap:0;
+}
+.nav-logo span{color:var(--logo-dot);display:inline-block;margin-left:0;padding-left:0}
+.nav-project-name{
+  font-size:14px;font-weight:600;color:var(--header-text-muted);
+  padding:4px 12px;background:var(--header-surface);
+  border:1px solid var(--header-border);border-radius:8px;
+}
+.nav-right{display:flex;align-items:center;gap:16px}
+.role-badge{font-size:11px;font-weight:700;padding:4px 12px;border-radius:8px;letter-spacing:0.04em;text-transform:capitalize}
+.role-badge.admin{background:rgba(18,163,180,0.15);color:var(--brand-teal);border:1px solid rgba(18,163,180,0.3)}
+.role-badge.member{background:rgba(18,163,180,0.15);color:var(--brand-teal);border:1px solid rgba(18,163,180,0.3)}
+.search-box{display:flex;align-items:center;gap:10px;background:var(--header-surface);border:1px solid var(--header-border);border-radius:10px;padding:7px 14px;width:260px;transition:var(--transition)}
+.search-box:focus-within{border-color:var(--brand-teal)}
+.search-box svg{color:var(--header-text-muted);flex-shrink:0}
+.search-box input{background:none;border:none;color:var(--header-text);font-family:inherit;font-size:13px;outline:none;width:100%}
+.search-box input::placeholder{color:var(--header-text-muted)}
+.logout-btn{background:none;border:1px solid var(--header-border);color:var(--header-text-muted);cursor:pointer;width:32px;height:32px;display:grid;place-items:center;border-radius:8px;transition:var(--transition)}
+.logout-btn:hover{border-color:var(--danger);color:var(--danger);background:rgba(239,68,68,0.12)}
+
+/* ── Body Layout ── */
+.app-body{display:flex;flex:1;overflow:hidden}
+
+/* ── Sidebar (admin only) ── */
+.sidebar{width:260px;background:var(--sidebar-bg);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;transition:var(--transition)}
+.sidebar.hidden{display:none !important}
+.sidebar-head{padding:20px 16px 12px;border-bottom:1px solid var(--border)}
+.sidebar-head h3{font-family:var(--font-title);font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted)}
+.sidebar-head p{font-size:12px;color:var(--text-muted);margin-top:4px;opacity:0.8}
+.project-list{flex:1;overflow-y:auto;padding:10px 8px}
+.project-item{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;border-radius:10px;cursor:pointer;margin-bottom:4px;
+  transition:var(--transition);border:1px solid transparent;color:var(--text-muted);
+  font-size:13px;font-weight:500;
+}
+.project-item:hover{background:var(--hover-bg);color:var(--text)}
+.project-item.active{
+  background:linear-gradient(90deg,rgba(18,163,180,0.15) 0%,rgba(18,163,180,0.03) 100%);
+  border-color:rgba(18,163,180,0.2);color:var(--text);
+}
+.proj-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.count-badge{
+  background:var(--chip-bg);border:1px solid var(--border);
+  font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;color:var(--text-muted);flex-shrink:0;
+}
+.project-item.active .count-badge{background:var(--brand-teal);color:#fff;border-color:transparent}
+
+/* ── Main Content ── */
+.main-content{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.content-header{
+  padding:28px 36px 0;display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0;
+}
+.project-title-wrap{display:inline-flex;align-items:flex-start;gap:6px;margin-bottom:8px}
+.project-title{font-family:var(--font-title);font-size:24px;font-weight:800;color:var(--text)}
+.project-file-count{
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;
+  color:var(--text-muted);white-space:nowrap;
+  background:var(--chip-bg);border:1px solid var(--border);
+  border-radius:7px;padding:2px 7px;
+  transform:translateY(-2px);
+}
+.project-stats{display:flex;align-items:center;gap:14px;font-size:13px;color:var(--text-muted)}
+.storage-pill{
+  display:flex;align-items:center;gap:8px;
+  padding:5px 12px;border-radius:999px;
+  background:var(--chip-bg);border:1px solid var(--border);
+  font-size:11px;font-weight:700;color:var(--text-muted);
+  letter-spacing:0.02em;
+}
+.storage-pill-track{
+  width:56px;height:5px;border-radius:99px;
+  background:var(--border);overflow:hidden;flex-shrink:0;
+}
+.storage-pill-fill{
+  display:block;height:100%;border-radius:99px;
+  background:linear-gradient(90deg,var(--brand-teal),var(--brand-mid));
+  transition:width 0.35s ease, background 0.35s ease;
+}
+.storage-pill.warn .storage-pill-fill{background:linear-gradient(90deg,var(--amber),#B36A00)}
+.storage-pill.full .storage-pill-fill{background:linear-gradient(90deg,var(--red),#a52d2d)}
+.storage-pill.warn{color:var(--amber);border-color:rgba(208,135,0,0.3)}
+.storage-pill.full{color:var(--red);border-color:rgba(214,59,59,0.3)}
+.stat-item{display:flex;align-items:center;gap:6px}
+.content-body{flex:1;overflow-y:auto;padding:20px 36px 36px;display:flex;flex-direction:column}
+
+/* ── Asset Grid ── */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:20px;align-content:start}
+.asset-card{
+  background:var(--card-bg);border:1px solid var(--border);
+  border-radius:18px;padding:16px;display:flex;flex-direction:column;
+  transition:var(--transition);position:relative;backdrop-filter:blur(10px);
+  cursor:default;
+}
+.asset-card:hover{
+  transform:translateY(-4px);
+  border-color:var(--border-glow);
+  background:var(--card-hover);
+  box-shadow:0 16px 40px rgba(0,0,0,0.15),0 0 24px rgba(47,214,228,0.05);
+}
+.asset-preview{
+  height:120px;border-radius:10px;background:#06060c;
+  display:flex;align-items:center;justify-content:center;
+  font-size:34px;margin-bottom:14px;overflow:hidden;
+  border:1px solid var(--border);transition:var(--transition);
+}
+.asset-preview{position:relative}
+.asset-btn-download{width:40px;height:40px;padding:0;border-radius:10px;display:inline-flex;align-items:center;justify-content:center}
+.asset-actions{right:12px;bottom:12px}
+.asset-card:hover .asset-preview{border-color:rgba(255,255,255,0.1)}
+.asset-preview img{width:100%;height:100%;object-fit:cover;transition:var(--transition)}
+.asset-card:hover .asset-preview img{transform:scale(1.04)}
+.asset-name{
+  font-family:var(--font-title);font-size:13px;font-weight:700;
+  color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px;
+}
+.asset-meta{font-size:12px;color:var(--text-muted);line-height:1.5;margin:8px 0 12px;flex:1}
+.asset-meta strong{color:var(--text)}
+
+/* Uploader line beneath the filename */
+.asset-uploader{font-size:12px;color:var(--text-muted);margin-bottom:8px}
+.asset-uploader strong{color:var(--text)}
+
+/* Position actions as compact buttons in the bottom-right of the card */
+.asset-actions{position:absolute;right:12px;bottom:12px;display:flex;gap:8px}
+.asset-btn{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;padding:8px 12px;font-family:inherit;font-size:13px;
+  font-weight:700;color:var(--text);cursor:pointer;text-align:center;transition:var(--transition);
+  box-shadow:none;min-width:56px;display:inline-flex;align-items:center;justify-content:center;
+}
+.asset-btn:hover{background:var(--surface-2);border-color:var(--border-strong);transform:translateY(-2px)}
+.asset-btn-delete{color:var(--red);background:transparent;border:1px solid rgba(214,59,59,0.12)}
+.asset-btn-delete:hover{background:var(--red);color:#fff;border-color:transparent}
+.asset-btn-download{background:var(--surface);color:var(--text);border:1px solid var(--border)}
+.asset-btn-download:hover,
+.asset-btn-download:active,
+.asset-btn-download:focus-visible{
+  background:linear-gradient(90deg,var(--brand-teal),var(--brand-mid));
+  color:#fff;border-color:transparent;
+}
+.asset-card{padding-bottom:56px}
+
+/* ── Theme Toggle (lives in the fixed-dark header) ── */
+.theme-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--header-border);
+  background: var(--header-surface);
+  color: var(--header-text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+.theme-toggle:hover {
+  background: var(--header-hover);
+  color: var(--header-text);
+  border-color: var(--header-hover-border);
+}
+.theme-toggle svg {
+  width: 15px;
+  height: 15px;
+}
+.theme-toggle .icon-moon {
+  display: none;
+}
+html[data-theme="dark"] .theme-toggle .icon-sun {
+  display: none;
+}
+html[data-theme="dark"] .theme-toggle .icon-moon {
+  display: inline-flex;
+}
+
+/* ── Empty / Loading States ── */
+.empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:80px 40px;color:var(--text-muted)}
+.empty-state svg{opacity:0.15;margin-bottom:24px;color:var(--brand-teal)}
+.empty-state h3{font-family:var(--font-title);color:var(--text);font-size:18px;margin-bottom:8px;font-weight:700;opacity:0.9}
+.empty-state p{font-size:14px;max-width:320px;line-height:1.6}
+.loading-spinner{display:inline-block;width:32px;height:32px;border:3px solid rgba(18,163,180,0.15);border-top-color:var(--brand-teal);border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:20px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Skeleton loading state ── */
+.skeleton-box{
+  background:linear-gradient(90deg, var(--surface-2) 25%, var(--border) 37%, var(--surface-2) 63%);
+  background-size:400% 100%;
+  animation:skeletonShimmer 1.4s ease-in-out infinite;
+  border-radius:6px;
+}
+@keyframes skeletonShimmer{
+  0%{background-position:100% 50%}
+  100%{background-position:0 50%}
+}
+.skeleton-card{cursor:default}
+.skeleton-card:hover{transform:none;box-shadow:none;border-color:var(--border);background:var(--card-bg)}
+.skeleton-preview{height:120px;border-radius:10px;margin-bottom:14px}
+.skeleton-line{height:12px;border-radius:4px}
+
+/* ── Confirm Modal (replaces native browser confirm()) ── */
+.confirm-backdrop{
+  position:fixed;inset:0;z-index:500;
+  background:rgba(0,0,0,0.55);
+  display:none;align-items:center;justify-content:center;
+  padding:20px;
+}
+.confirm-backdrop.open{display:flex}
+.confirm-box{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:16px;padding:24px;width:100%;max-width:360px;
+  box-shadow:var(--shadow-md);
+  animation:fadeUp 0.18s ease both;
+}
+.confirm-title{font-family:var(--font-title);font-size:16px;font-weight:800;color:var(--text);margin-bottom:8px}
+.confirm-message{font-size:13px;color:var(--text-muted);line-height:1.5;margin-bottom:20px}
+.confirm-actions{display:flex;justify-content:flex-end;gap:10px}
+.confirm-btn{
+  font-family:inherit;font-size:13px;font-weight:700;
+  border-radius:10px;padding:9px 16px;cursor:pointer;transition:var(--transition);
+  border:1px solid var(--border);background:var(--surface-2);color:var(--text);
+}
+.confirm-btn:hover{background:var(--card-hover);border-color:var(--border-strong)}
+.confirm-btn-danger{background:linear-gradient(90deg,var(--brand-teal),var(--brand-mid));border-color:transparent;color:#fff}
+.confirm-btn-danger:hover{filter:brightness(1.08)}
+.locked-notice{
+  display:flex;align-items:center;gap:10px;padding:10px 16px;
+  background:rgba(18,163,180,0.08);border:1px solid rgba(18,163,180,0.2);
+  border-radius:10px;font-size:13px;color:var(--accent-ink);margin-bottom:24px;
+}
+
+/* Compact storage workspace */
+.top-nav{height:56px;padding:0 22px}
+.nav-left{gap:14px}
+.nav-right{gap:10px}
+.nav-project-name{font-size:12.5px;padding:3px 10px;border-radius:7px;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.role-badge{font-size:10.5px;padding:3px 10px;border-radius:7px}
+.search-box{width:240px;padding:6px 12px;border-radius:8px}
+.search-box input{font-size:12.5px}
+.sidebar{width:232px}
+.sidebar-head{padding:14px 14px 10px}
+.sidebar-head h3{font-size:11.5px}
+.sidebar-head p{font-size:11px;margin-top:3px}
+.project-list{padding:8px}
+.project-item{padding:8px 10px;border-radius:8px;margin-bottom:3px;font-size:12.5px}
+.count-badge{font-size:10.5px;padding:1px 7px}
+.content-header{padding:18px 24px 0;align-items:center}
+.project-title-wrap{margin-bottom:6px}
+.project-title{font-size:20px}
+.project-stats{gap:10px;font-size:12px}
+.storage-pill{padding:4px 10px;font-size:10.5px;gap:7px}
+.storage-pill-track{width:48px;height:4px}
+.content-body{padding:14px 24px 24px}
+.grid{grid-template-columns:repeat(auto-fill,minmax(166px,1fr));gap:12px}
+.asset-card{border-radius:10px;padding:10px 10px 46px}
+.asset-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-sm)}
+.asset-preview{height:92px;border-radius:8px;font-size:28px;margin-bottom:10px}
+.asset-name{font-size:12.5px;margin-bottom:4px}
+.asset-meta{font-size:11.5px;line-height:1.4;margin:6px 0 8px}
+.asset-uploader{font-size:11.5px;margin-bottom:6px}
+.asset-actions{right:10px;bottom:10px;gap:6px}
+.asset-btn{border-radius:8px;padding:6px 9px;font-size:12px;min-width:44px}
+.asset-btn-download{width:32px;height:32px;border-radius:8px}
+.empty-state{padding:48px 24px}
+.empty-state svg{margin-bottom:16px}
+.empty-state h3{font-size:16px}
+.empty-state p{font-size:13px}
+.skeleton-preview{height:92px;margin-bottom:10px}
+
+/* Center search box in the top nav on larger screens and increase its width */
+@media (min-width: 860px) {
+  .top-nav { padding: 0 28px; }
+  .search-box {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 360px;
+    max-width: 60%;
+    padding: 6px 12px;
+  }
+}
+@media (min-width: 680px) and (max-width: 859px) {
+  .top-nav{height:56px;padding:0 16px;gap:8px;flex-wrap:nowrap}
+  .nav-left,.nav-right{gap:8px}
+  .nav-left{min-width:0}
+  .nav-project-name{max-width:130px}
+  .search-box{
+    position:absolute;
+    left:50%;
+    transform:translateX(-50%);
+    width:320px;
+    max-width:38vw;
+    padding:6px 12px;
+  }
+  .role-badge{max-width:88px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sidebar{width:200px}
+  .content-header{padding:16px 16px 0;flex-direction:column;align-items:flex-start;gap:10px}
+  .content-body{padding:12px 16px 18px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(142px,1fr));gap:10px}
+  .asset-preview{height:78px}
+}
+@media (max-width: 679px) {
+  .top-nav{height:auto;min-height:56px;padding:10px 14px;gap:10px;flex-wrap:wrap}
+  .nav-left,.nav-right{gap:8px}
+  .search-box{position:static;transform:none;order:3;width:100%;max-width:none}
+  .sidebar{width:200px}
+  .content-header{padding:16px 16px 0;flex-direction:column;align-items:flex-start;gap:10px}
+  .content-body{padding:12px 16px 18px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(142px,1fr));gap:10px}
+  .asset-preview{height:78px}
+}
+  .slide-toast-container { position: fixed; top: 80px; right: 24px; z-index: 10000; display: flex; flex-direction: column; gap: 12px; pointer-events: none; }
+  .slide-toast { background: var(--surface); border: 1px solid var(--border); box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.15), 0 8px 12px -6px rgba(0, 0, 0, 0.1); border-radius: 12px; padding: 14px 18px; width: 340px; display: flex; align-items: flex-start; gap: 14px; pointer-events: auto; transform: translateX(400px); transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s; opacity: 0; }
+  .slide-toast.show { transform: translateX(0); opacity: 1; }
+  .slide-toast__icon-wrap { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .slide-toast--error .slide-toast__icon-wrap { background: rgba(239, 68, 68, 0.12); color: var(--danger, #D63B3B); }
+  .slide-toast__content { flex: 1; min-width: 0; }
+  .slide-toast__title { font-weight: 700; font-size: 13.5px; color: var(--text); }
+  .slide-toast__desc { font-size: 12px; color: var(--text-muted); margin-top: 3px; line-height: 1.4; word-break: break-word; }
+  .slide-toast__close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 2px; border-radius: 4px; margin-top: -2px; margin-right: -4px; display: flex; align-items: center; justify-content: center; }
+  .slide-toast__close:hover { background: var(--surface-2); color: var(--text); }
+</style>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+    .btn, button:not(.theme-toggle):not(.team-add-btn):not(.avatar):not(.circle-btn), .input, .field__input, input[type="text"], input[type="search"], input[type="number"], input[type="email"], input[type="password"] {
+      border-radius: 4px !important;
+    }
+    .theme-toggle, .team-add-btn {
+      border-radius: 50% !important;
+    }
+    </style>
+</head>
+<body>
+
+<!-- ── Auth Screen ── -->
+<div id="auth-screen" style="display:none">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+
+  <!-- Center: quote zone -->
+  <div class="auth-quote-zone" id="auth-quote-zone">
+    <div class="auth-topbar">
+      <div class="auth-brand">Start<span>up.</span></div>
+    </div>
+    <div class="auth-quote-wrap">
+      <span class="auth-quote-mark">&ldquo;</span>
+      <div class="auth-quote-text" id="auth-quote-text"></div>
+      <div class="auth-quote-author" id="auth-quote-author"></div>
+    </div>
+  </div>
+
+  <!-- Right: sliding auth panel (authenticated) -->
+  <div class="auth-panel" id="auth-authed" style="display:none">
+    <div class="auth-ring-wrap">
+      <div class="auth-ring"></div>
+      <div class="auth-ring-inner"></div>
+      <div class="auth-avatar" id="auth-avatar">—</div>
+    </div>
+    <div class="auth-info">
+      <div class="auth-label">Authenticating</div>
+      <div class="auth-name" id="auth-name">Loading…</div>
+      <div class="auth-status" id="auth-status">Verifying your CRM session…</div>
+    </div>
+  </div>
+
+  <!-- Right: sliding panel (not authenticated) -->
+  <div class="auth-panel" id="auth-unauth" style="display:none">
+    <div class="auth-unauth">
+      <div class="auth-unauth-icon">🔒</div>
+      <div class="auth-info">
+        <h2>Session Required</h2>
+        <p>You need to be logged in to the CRM to access Files &amp; Assets.</p>
+        <a href="/">Go to CRM Login</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Main App ── -->
+<div id="app-container">
+  <!-- Top Nav -->
+  <div class="top-nav">
+    <div class="nav-left">
+      <div class="nav-logo">Start<span>up.</span></div>
+      <div class="nav-project-name" id="nav-project-name" style="display:none">Asset Bucket</div>
+    </div>
+    <div class="nav-right">
+      <div class="search-box" id="search-box">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="search-input" placeholder="Search files…">
+      </div>
+      <span class="role-badge member" id="role-badge">Member</span>
+      <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle dark mode" aria-label="Toggle dark mode">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      </button>
+      <button class="logout-btn" id="logout-btn" title="Log out">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="app-body">
+    <!-- Sidebar (admin: all projects) -->
+    <div class="sidebar hidden" id="sidebar">
+      <div class="sidebar-head">
+        <h3>Projects</h3>
+        <p>All client workspaces</p>
+      </div>
+      <div class="project-list" id="project-list-el"></div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Loading -->
+      <div id="state-loading" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+        <div class="content-header">
+          <div>
+            <div class="skeleton-box" style="width:180px;height:22px;margin-bottom:10px"></div>
+            <div class="skeleton-box" style="width:130px;height:13px"></div>
+          </div>
+        </div>
+        <div class="content-body">
+          <div class="grid">
+            <div class="asset-card skeleton-card">
+              <div class="skeleton-box skeleton-preview"></div>
+              <div class="skeleton-box skeleton-line" style="width:70%;margin-bottom:8px"></div>
+              <div class="skeleton-box skeleton-line" style="width:50%;margin-bottom:10px"></div>
+              <div class="skeleton-box skeleton-line" style="width:90%"></div>
+            </div>
+            <div class="asset-card skeleton-card">
+              <div class="skeleton-box skeleton-preview"></div>
+              <div class="skeleton-box skeleton-line" style="width:60%;margin-bottom:8px"></div>
+              <div class="skeleton-box skeleton-line" style="width:45%;margin-bottom:10px"></div>
+              <div class="skeleton-box skeleton-line" style="width:80%"></div>
+            </div>
+            <div class="asset-card skeleton-card">
+              <div class="skeleton-box skeleton-preview"></div>
+              <div class="skeleton-box skeleton-line" style="width:75%;margin-bottom:8px"></div>
+              <div class="skeleton-box skeleton-line" style="width:40%;margin-bottom:10px"></div>
+              <div class="skeleton-box skeleton-line" style="width:85%"></div>
+            </div>
+            <div class="asset-card skeleton-card">
+              <div class="skeleton-box skeleton-preview"></div>
+              <div class="skeleton-box skeleton-line" style="width:65%;margin-bottom:8px"></div>
+              <div class="skeleton-box skeleton-line" style="width:55%;margin-bottom:10px"></div>
+              <div class="skeleton-box skeleton-line" style="width:70%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- No project selected (admin only, before picking from sidebar) -->
+      <div class="empty-state" id="state-pick" style="display:none">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <h3>Select a Project</h3>
+        <p>Pick a project from the sidebar to browse its client assets.</p>
+      </div>
+
+      <!-- Project Asset View -->
+      <div id="project-view" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+        <div class="content-header" id="content-header">
+          <div>
+            <div class="project-title-wrap">
+              <span class="project-title" id="active-project-name">—</span>
+              <span class="project-file-count" id="stat-count">0 files</span>
+            </div>
+            <div class="project-stats">
+              <div class="storage-pill" id="storage-pill" title="0 MB of 10 MB used">
+                <span class="storage-pill-label" id="storage-pill-label">0 MB / 10 MB</span>
+                <span class="storage-pill-track">
+                  <span class="storage-pill-fill" id="storage-pill-fill" style="width:0%"></span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="content-body">
+
+          <div class="grid" id="assets-grid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Modal (replaces native browser confirm()) -->
+<div class="confirm-backdrop" id="confirm-backdrop">
+  <div class="confirm-box">
+    <div class="confirm-title" id="confirm-title">Are you sure?</div>
+    <div class="confirm-message" id="confirm-message"></div>
+    <div class="confirm-actions">
+      <button class="confirm-btn" id="confirm-cancel-btn">Cancel</button>
+      <button class="confirm-btn confirm-btn-danger" id="confirm-ok-btn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const SERVER = window.location.origin;
+  const urlParams = new URLSearchParams(window.location.search);
+  const LOCKED_PROJECT_ID = urlParams.get('project');
+
+  // ── DOM refs ──
+  const authScreen      = document.getElementById('auth-screen');
+  const authAuthed      = document.getElementById('auth-authed');
+  const authUnauth      = document.getElementById('auth-unauth');
+  const authAvatar      = document.getElementById('auth-avatar');
+  const authName        = document.getElementById('auth-name');
+  const authStatus      = document.getElementById('auth-status');
+  const authQuoteText   = document.getElementById('auth-quote-text');
+  const authQuoteAuthor = document.getElementById('auth-quote-author');
+  const appContainer    = document.getElementById('app-container');
+  const logoutBtn    = document.getElementById('logout-btn');
+  const searchInput  = document.getElementById('search-input');
+  const sidebar      = document.getElementById('sidebar');
+  const projectListEl= document.getElementById('project-list-el');
+  const projectView  = document.getElementById('project-view');
+  const stateLoading = document.getElementById('state-loading');
+  const statePick    = document.getElementById('state-pick');
+  const activeNameEl = document.getElementById('active-project-name');
+  const statCountEl  = document.getElementById('stat-count');
+  const storagePill      = document.getElementById('storage-pill');
+  const storagePillLabel = document.getElementById('storage-pill-label');
+  const storagePillFill  = document.getElementById('storage-pill-fill');
+  const STORAGE_LIMIT_BYTES = 10 * 1024 * 1024; // 10 MB per-project limit
+  const assetsGrid   = document.getElementById('assets-grid');
+  const roleBadge    = document.getElementById('role-badge');
+  const navProjectName = document.getElementById('nav-project-name');
+
+  let sessionToken = sessionStorage.getItem('crm-session-token') || localStorage.getItem('crm-session-token') || localStorage.getItem('storage-session-token');
+  let userId       = sessionStorage.getItem('crm-current-user') || localStorage.getItem('crm-current-user') || sessionStorage.getItem('crm-user-id') || localStorage.getItem('storage-user-id');
+  let userRole     = '';
+  let activeProjectId = null;
+  let allAssets    = [];
+  let projectsMap  = {};
+
+  // ── Storage quotes ──
+  const QUOTES = [
+    { text: 'Every file tells a story. Keep them safe, keep them organised.', author: 'Startup' },
+    { text: 'Good organisation is the foundation of every great project.', author: 'David Allen' },
+    { text: 'A place for everything, and everything in its place.', author: 'Benjamin Franklin' },
+    { text: 'The secret to creativity is knowing how to hide your sources.', author: 'Albert Einstein' },
+    { text: 'Order is not pressure which is imposed on society from without, but an equilibrium which is set up from within.', author: 'Jose Ortega y Gasset' },
+    { text: 'Digital assets are the raw material of the modern creative economy.', author: 'Startup' },
+    { text: 'Store what you need, share what matters, delete what holds you back.', author: 'Startup' },
+    { text: 'Files are just ideas waiting to become something greater.', author: 'Startup' },
+  ];
+
+  function showQuote() {
+    const q = QUOTES[Math.floor(Math.random() * QUOTES.length)];
+    authQuoteText.textContent = q.text;
+    authQuoteAuthor.textContent = '~ ' + q.author;
+  }
+
+  // ── Show auth screen ──
+  function showAuthScreen(hasSession) {
+    authScreen.style.transition = 'none';
+    authScreen.style.opacity = '1';
+    authScreen.style.display = 'flex';
+    showQuote();
+    if (hasSession) {
+      authAvatar.textContent = '👤';
+      authName.textContent = 'Connecting...';
+      authAuthed.style.display = 'flex';
+      authUnauth.style.display = 'none';
+    } else {
+      authAuthed.style.display = 'none';
+      authUnauth.style.display = 'flex';
+    }
+  }
+
+  function hideAuthScreen() {
+    authScreen.style.opacity = '0';
+    authScreen.style.transition = 'opacity 0.5s ease';
+    setTimeout(() => { authScreen.style.display = 'none'; }, 500);
+  }
+
+  function authHeaders() {
+    return { 'Content-Type': 'application/json', 'x-session-token': sessionToken };
+  }
+
+  // ── Back button = logout (locked project mode) ──
+  if (LOCKED_PROJECT_ID) {
+    history.pushState(null, '', location.href);
+    window.addEventListener('popstate', () => doLogout());
+  }
+
+  // ── Boot ──
+  if (sessionToken && userId) {
+    showAuthScreen(true);
+    initApp();
+  } else {
+    showAuthScreen(false);
+  }
+
+  // ── Theme Toggle ──
+  window.toggleTheme = () => {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (isDark) {
+      document.documentElement.removeAttribute('data-theme');
+      try { localStorage.setItem('crm-theme', 'light'); } catch (e) { }
+    } else {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      try { localStorage.setItem('crm-theme', 'dark'); } catch (e) { }
+    }
+  };
+
+  // ── Logout ──
+  let isLoggingOut = false;
+  logoutBtn.addEventListener('click', () => doLogout({ redirect: true }));
+  window.addEventListener('storage', event => {
+    if (isLoggingOut) return;
+    if (event.key === 'crm-session-token' || event.key === 'crm-current-user') {
+      const isRemoved = (event.newValue === null || event.newValue === 'undefined');
+      if (isRemoved) {
+        clearSession();
+        appContainer.classList.remove('ready');
+        showAuthScreen(false);
+      } else {
+        // A key was set -> Check if both are present to complete login
+        const newSessionToken = localStorage.getItem('crm-session-token');
+        const newUserId       = localStorage.getItem('crm-current-user');
+        if (newSessionToken && newUserId) {
+          if (sessionToken !== newSessionToken || userId !== newUserId) {
+            sessionToken = newSessionToken;
+            userId = newUserId;
+            sessionStorage.setItem('crm-session-token', sessionToken);
+            sessionStorage.setItem('crm-current-user', userId);
+            showAuthScreen(true);
+            initApp();
+          }
+        }
+      }
+    }
+  });
+
+  function clearSession() {
+    localStorage.removeItem('storage-session-token');
+    localStorage.removeItem('storage-user-id');
+    localStorage.removeItem('crm-session-token');
+    localStorage.removeItem('crm-current-user');
+    sessionStorage.removeItem('crm-session-token');
+    sessionStorage.removeItem('crm-current-user');
+    sessionStorage.removeItem('crm-user-id');
+    sessionToken = null;
+    userId = null;
+  }
+
+  async function doLogout({ redirect = true } = {}) {
+    if (isLoggingOut) return;
+    isLoggingOut = true;
+    try { await fetch(`${SERVER}/api/auth/logout`, { method: 'POST', headers: authHeaders() }); } catch {}
+    clearSession();
+    if (redirect) {
+      window.location.href = LOCKED_PROJECT_ID
+        ? `${window.location.pathname}?project=${LOCKED_PROJECT_ID}`
+        : window.location.pathname;
+    } else {
+      appContainer.classList.remove('ready');
+      showAuthScreen(false);
+    }
+  }
+
+  // ── Init after login ──
+  async function initApp() {
+    if (window.Notification && Notification.permission !== "granted" && Notification.permission !== "denied") {
+      Notification.requestPermission();
+    }
+    appContainer.classList.add('ready');
+    stateLoading.style.display = 'flex';
+
+    // Get user details
+    let userName = 'User';
+    try {
+      const r = await fetch(`${SERVER}/api/db`, { headers: authHeaders() });
+      if (r.status === 401 || r.status === 403) { doLogout(); return; }
+      const d = await r.json();
+      if (d.team) {
+        const me = d.team.find(m => m.id === userId);
+        userRole = me ? me.role : 'Member';
+        userName = me ? me.name : 'User';
+        // Update auth screen with real name & avatar
+        authAvatar.textContent = userName[0].toUpperCase();
+        authName.textContent = userName;
+        authStatus.textContent = 'Welcome back!';
+      }
+    } catch {}
+
+    // Style and populate user name badge
+    roleBadge.textContent = userName;
+    roleBadge.className = 'role-badge ' + (userRole === 'Admin' ? 'admin' : 'member');
+
+    // Small pause so the auth screen feels intentional, then fade out
+    await new Promise(r => setTimeout(r, 900));
+    hideAuthScreen();
+
+    // Connect WebSocket
+    if (window.io && sessionToken) {
+      const socket = window.io({ auth: { token: sessionToken } });
+      socket.on('db_changed', () => {
+        fetchAllProjects();
+        if (activeProjectId) loadProjectAssets(activeProjectId, activeNameEl.textContent);
+      });
+    }
+
+    if (LOCKED_PROJECT_ID) {
+      // ── LOCKED MODE: member sees only one project, no sidebar ──
+      sidebar.classList.add('hidden');
+      await loadProjectAssets(LOCKED_PROJECT_ID);
+    } else if (userRole === 'Admin') {
+      // ── ADMIN FREE-BROWSE: show sidebar with all projects ──
+      sidebar.classList.remove('hidden');
+        await fetchAllProjects();
+        stateLoading.style.display = 'none';
+        statePick.style.display = 'flex';
+    } else {
+      // ── NON-ADMIN: sidebar always hidden; auto-load first accessible project ──
+      sidebar.classList.add('hidden');
+      const projects = await fetchAccessibleProjects();
+      if (projects.length >= 1) {
+        // Auto-load the first project; member never sees the sidebar
+        await loadProjectAssets(projects[0].id, projects[0].name);
+      } else {
+        stateLoading.style.display = 'none';
+        statePick.style.display = 'flex';
+        statePick.querySelector('h3').textContent = 'No Projects Assigned';
+        statePick.querySelector('p').textContent = 'You haven\'t been added to any projects yet. Contact your admin.';
+      }
+    }
+  }
+
+  // ── Fetch all projects (admin) ──
+  async function fetchAllProjects() {
+    try {
+      const r   = await fetch(`${SERVER}/api/storage/projects`, { headers: authHeaders() });
+      const res = await r.json();
+      if (!r.ok) throw new Error(res.error);
+      renderSidebar(res.projects || []);
+    } catch (err) { console.error(err); }
+  }
+
+  // ── Fetch projects for non-admin ──
+  async function fetchAccessibleProjects() {
+    try {
+      const r   = await fetch(`${SERVER}/api/storage/projects`, { headers: authHeaders() });
+      const res = await r.json();
+      return res.projects || [];
+    } catch { return []; }
+  }
+
+  function renderSidebar(projects) {
+    projectListEl.innerHTML = '';
+    projects.forEach(p => {
+      projectsMap[p.id] = p.name;
+      const div = document.createElement('div');
+      div.className = 'project-item';
+      div.id = `proj-${p.id}`;
+      div.onclick = () => loadProjectAssets(p.id, p.name);
+      div.innerHTML = `
+        <span class="proj-name">${escHtml(p.name)}</span>
+        <span class="count-badge" id="badge-${p.id}">${p.assetCount}</span>
+      `;
+      projectListEl.appendChild(div);
+    });
+  }
+
+  // ── Load assets for a project ──
+  async function loadProjectAssets(projectId, projectName) {
+    activeProjectId = projectId;
+    stateLoading.style.display = 'flex';
+    statePick.style.display = 'none';
+    projectView.style.display = 'none';
+
+    // Highlight sidebar item
+    document.querySelectorAll('.project-item').forEach(el => el.classList.remove('active'));
+    const item = document.getElementById(`proj-${projectId}`);
+    if (item) item.classList.add('active');
+
+    try {
+      const r   = await fetch(`${SERVER}/api/storage/projects/${projectId}/assets`, { headers: authHeaders() });
+      const res = await r.json();
+      if (!r.ok) throw new Error(res.error || 'Access denied.');
+
+      allAssets = res.assets || [];
+      const name = res.projectName || projectName || projectsMap[projectId] || 'Project Assets';
+      activeNameEl.textContent = name;
+
+      // Show the tool name in the topnav badge
+      navProjectName.textContent = 'Asset Bucket';
+      navProjectName.style.display = 'block';
+
+      stateLoading.style.display = 'none';
+      projectView.style.display = 'flex';
+      renderAssets(allAssets);
+    } catch (err) {
+      stateLoading.style.display = 'none';
+      statePick.style.display = 'flex';
+      statePick.querySelector('h3').textContent = 'Access Denied';
+      statePick.querySelector('p').textContent = err.message;
+    }
+  }
+
+  // ── Render asset cards ──
+  function renderAssets(assets) {
+    statCountEl.textContent = `${assets.length} file${assets.length !== 1 ? 's' : ''}`;
+    const totalBytes = assets.reduce((s, a) => s + parseInt(a.size_bytes || 0), 0);
+    const usedMB = totalBytes / (1024 * 1024);
+    const limitMB = STORAGE_LIMIT_BYTES / (1024 * 1024);
+    const percent = Math.min(100, (totalBytes / STORAGE_LIMIT_BYTES) * 100);
+
+    storagePillLabel.textContent = `${usedMB < 10 ? usedMB.toFixed(1) : Math.round(usedMB)} MB / ${limitMB} MB`;
+    storagePillFill.style.width = `${percent}%`;
+    storagePill.title = `${usedMB.toFixed(1)} MB of ${limitMB} MB used`;
+    storagePill.classList.remove('warn', 'full');
+    if (percent >= 100) storagePill.classList.add('full');
+    else if (percent >= 80) storagePill.classList.add('warn');
+
+    const badge = document.getElementById(`badge-${activeProjectId}`);
+    if (badge) badge.textContent = assets.length;
+
+    if (!assets.length) {
+      assetsGrid.style.flex = '1';
+      assetsGrid.style.display = 'flex';
+      assetsGrid.style.flexDirection = 'column';
+      assetsGrid.style.alignItems = 'center';
+      assetsGrid.style.justifyContent = 'center';
+      assetsGrid.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;text-align:center;color:var(--text-muted);">
+          <div style="margin-bottom:20px;opacity:0.5;">
+            <svg width="72" height="72" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+            </svg>
+          </div>
+          <div style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:6px">No assets yet</div>
+          <div style="font-size:13px;color:var(--text-muted)">Files uploaded by the client will appear here.</div>
+        </div>`;
+      return;
+    }
+
+    assetsGrid.style.flex = '';
+    assetsGrid.style.display = '';
+    assetsGrid.style.flexDirection = '';
+    assetsGrid.style.alignItems = '';
+    assetsGrid.style.justifyContent = '';
+    assetsGrid.innerHTML = '';
+
+    assets.forEach(a => {
+      const isImg = (a.content_type || '').startsWith('image/');
+      const card = document.createElement('div');
+      card.className = 'asset-card';
+      card.innerHTML = `
+        <div class="asset-preview">
+          ${isImg ? `<img src="" id="img-prev-${a.id}" alt="Preview" style="display:none">` : ''}
+          <span id="icon-prev-${a.id}">${getEmoji(a.content_type)}</span>
+        </div>
+        <div class="asset-name" title="${escHtml(a.filename)}">${escHtml(a.filename)}</div>
+        <div class="asset-uploader">Uploaded by <strong>${escHtml(a.client_name || 'Anonymous')}</strong></div>
+        <div class="asset-meta">
+          Size: <strong>${fmtBytes(a.size_bytes)}</strong> · Date: <strong>${new Date(a.uploaded_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</strong>
+        </div>
+        <div class="asset-actions">
+          <button class="asset-btn asset-btn-download" onclick="downloadAsset('${a.id}')" aria-label="Download">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+          ${userRole === 'Admin' ? `<button class="asset-btn asset-btn-delete" onclick="deleteAsset('${a.id}')" aria-label="Delete">` +
+            `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M9 1h6v2H9V1zM4 4h16v2.4H4V4zm1 3.5h14l-1.4 12.5c-.1.9-.9 1-1.6 1H7.6c-.7 0-1.5-.1-1.6-1L5 7.5zm3.4 2.5v8h1.4v-8H8.4zm2.9 0v8h1.4v-8h-1.4zm2.9 0v8h1.4v-8h-1.4z"/></svg></button>` : ''}
+        </div>`;
+      assetsGrid.appendChild(card);
+      if (isImg) loadThumbnail(a.id);
+    });
+  }
+
+  async function loadThumbnail(id) {
+    try {
+      const r   = await fetch(`${SERVER}/api/storage/assets/${id}/download`, { headers: authHeaders() });
+      const res = await r.json();
+      if (res.url) {
+        const img  = document.getElementById(`img-prev-${id}`);
+        const icon = document.getElementById(`icon-prev-${id}`);
+        if (img) { img.src = res.url; img.style.display = 'block'; if (icon) icon.style.display = 'none'; }
+      }
+    } catch {}
+  }
+
+  // ── Custom confirm modal (replaces native confirm()) ──
+  const confirmBackdrop = document.getElementById('confirm-backdrop');
+  const confirmMessageEl = document.getElementById('confirm-message');
+  const confirmOkBtn = document.getElementById('confirm-ok-btn');
+  const confirmCancelBtn = document.getElementById('confirm-cancel-btn');
+
+  function confirmDialog(message) {
+    confirmMessageEl.textContent = message;
+    confirmBackdrop.classList.add('open');
+    return new Promise(resolve => {
+      const cleanup = (result) => {
+        confirmBackdrop.classList.remove('open');
+        confirmOkBtn.removeEventListener('click', onOk);
+        confirmCancelBtn.removeEventListener('click', onCancel);
+        confirmBackdrop.removeEventListener('click', onBackdrop);
+        document.removeEventListener('keydown', onKey);
+        resolve(result);
+      };
+      const onOk = () => cleanup(true);
+      const onCancel = () => cleanup(false);
+      const onBackdrop = (e) => { if (e.target === confirmBackdrop) cleanup(false); };
+      const onKey = (e) => { if (e.key === 'Escape') cleanup(false); };
+      confirmOkBtn.addEventListener('click', onOk);
+      confirmCancelBtn.addEventListener('click', onCancel);
+      confirmBackdrop.addEventListener('click', onBackdrop);
+      document.addEventListener('keydown', onKey);
+    });
+  }
+
+  window.downloadAsset = async (id) => {
+    try {
+      const r   = await fetch(`${SERVER}/api/storage/assets/${id}/download`, { headers: authHeaders() });
+      const res = await r.json();
+      if (res.url) window.open(res.url, '_blank');
+      else showToast('Could not retrieve download link.', 'error');
+    } catch { showToast('Download failed.', 'error'); }
+  };
+
+  window.deleteAsset = async (id) => {
+    const ok = await confirmDialog('Permanently delete this asset from storage?');
+    if (!ok) return;
+    
+    // Optimistic UI Update: immediately remove from array and re-render
+    allAssets = allAssets.filter(a => a.id !== id);
+    renderAssets(allAssets);
+    
+    try {
+      const r = await fetch(`${SERVER}/api/storage/assets/${id}`, { method: 'DELETE', headers: authHeaders() });
+      if (!r.ok) throw new Error();
+    } catch { 
+      showSlideNotification('Delete failed', 'Could not delete the file. Please try again later.', 'error');
+      loadProjectAssets(activeProjectId, activeNameEl.textContent); // Revert state
+    }
+  };
+
+  function showSlideNotification(title, message, type) {
+    let container = document.getElementById('slide-toast-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'slide-toast-container';
+      container.className = 'slide-toast-container';
+      document.body.appendChild(container);
+    }
+    const el = document.createElement('div');
+    el.className = 'slide-toast slide-toast--' + (type || 'info');
+    let icon = '';
+    if (type === 'error') {
+      icon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
+    } else {
+      icon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+    }
+    el.innerHTML = `
+      <div class="slide-toast__icon-wrap">${icon}</div>
+      <div class="slide-toast__content">
+        <div class="slide-toast__title">${title}</div>
+        <div class="slide-toast__desc">${message}</div>
+      </div>
+      <button class="slide-toast__close" aria-label="Close">✕</button>
+    `;
+    el.querySelector('.slide-toast__close').onclick = () => {
+      el.classList.remove('show');
+      setTimeout(() => el.remove(), 450);
+    };
+    container.appendChild(el);
+    setTimeout(() => el.classList.add('show'), 50);
+    setTimeout(() => {
+      if (el.parentNode) {
+        el.classList.remove('show');
+        setTimeout(() => el.remove(), 450);
+      }
+    }, 5000);
+  }
+
+  // ── Search ──
+  searchInput.addEventListener('input', e => {
+    const q = e.target.value.toLowerCase().trim();
+    renderAssets(q ? allAssets.filter(a => a.filename.toLowerCase().includes(q) || (a.client_name || '').toLowerCase().includes(q)) : allAssets);
+  });
+
+  // ── Helpers ──
+  function fmtBytes(b) {
+    b = parseInt(b || 0);
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    return (b / 1048576).toFixed(1) + ' MB';
+  }
+  function getEmoji(t) {
+    t = t || '';
+    if (t.startsWith('image/')) return '🖼️';
+    if (t === 'application/pdf') return '📄';
+    if (t.includes('video')) return '🎬';
+    if (t.includes('audio')) return '🎵';
+    if (t.includes('zip') || t.includes('compressed') || t.includes('tar')) return '🗜️';
+    if (t.includes('word') || t.includes('document')) return '📝';
+    if (t.includes('sheet') || t.includes('excel')) return '📊';
+    return '📎';
+  }
+  function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+})();
+
+  (function () {
+    let idleTime = 0;
+    const maxIdle = 30 * 60; // 30 minutes
+    const warningStart = 25 * 60; // 25 minutes
+    let countdownInterval = null;
+    let warningActive = false;
+
+    function showCountdownToast() {
+      if (warningActive) return;
+      warningActive = true;
+      try {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (AudioContext) {
+    const ctx = new AudioContext();
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc1.type = 'sine';
+    osc2.type = 'triangle';
+    osc1.frequency.value = 1108.7;
+    osc2.frequency.value = 1661.2;
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+    osc1.start(ctx.currentTime);
+    osc2.start(ctx.currentTime);
+    osc1.stop(ctx.currentTime + 0.6);
+    osc2.stop(ctx.currentTime + 0.6);
+  }
+} catch(e) {}
+      
+      if (window.Notification && Notification.permission === "granted") {
+        new Notification("Session Expiring", { body: "You will be logged out in 5 minutes due to inactivity." });
+      }
+
+      let container = document.getElementById('slide-toast-container');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'slide-toast-container';
+        container.className = 'slide-toast-container';
+        document.body.appendChild(container);
+      }
+      const el = document.createElement('div');
+      el.id = 'inactivity-warning-toast';
+      el.className = 'slide-toast slide-toast--warn';
+      el.style.position = 'relative';
+      el.style.overflow = 'hidden';
+      el.innerHTML = `
+        <div class="slide-toast__icon-wrap" style="background: rgba(245, 158, 11, 0.12); color: var(--warn, #f59e0b);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div class="slide-toast__content">
+          <div class="slide-toast__title">Inactivity Warning</div>
+          <div class="slide-toast__desc">You will be logged out in <strong id="inactivity-countdown" style="color:var(--warn, #f59e0b)">05:00</strong> due to inactivity. Move your mouse to stay logged in.</div>
+        </div>
+        <div id="inactivity-progress" style="position:absolute;bottom:0;left:0;height:4px;background:var(--warn, #f59e0b);width:100%;transition:width 1s linear;"></div>
+      `;
+      container.appendChild(el);
+      setTimeout(() => el.classList.add('show'), 50);
+
+      let timeLeft = maxIdle - idleTime;
+      const totalWarningTime = maxIdle - warningStart;
+      countdownInterval = setInterval(() => {
+        timeLeft--;
+        if (timeLeft < 0) timeLeft = 0;
+        const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+        const s = (timeLeft % 60).toString().padStart(2, '0');
+        const cdEl = document.getElementById('inactivity-countdown');
+        if (cdEl) cdEl.textContent = `${m}:${s}`;
+        
+        const pEl = document.getElementById('inactivity-progress');
+        if (pEl) {
+          const pct = (timeLeft / totalWarningTime) * 100;
+          pEl.style.width = `${pct}%`;
+        }
+      }, 1000);
+    }
+
+    function removeCountdownToast() {
+      warningActive = false;
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+      const el = document.getElementById('inactivity-warning-toast');
+      if (el) {
+        el.classList.remove('show');
+        setTimeout(() => el.remove(), 450);
+      }
+    }
+
+    const idleInterval = setInterval(() => {
+      idleTime++;
+      if (idleTime === warningStart) {
+        showCountdownToast();
+      }
+      if (idleTime >= maxIdle) {
+        clearInterval(idleInterval);
+        removeCountdownToast();
+        if (typeof doLogout === 'function') doLogout();
+      }
+    }, 1000);
+
+    const resetIdle = () => { 
+      idleTime = 0; 
+      if (warningActive) removeCountdownToast();
+    };
+    window.addEventListener('mousemove', resetIdle, { passive: true });
+    window.addEventListener('keydown', resetIdle, { passive: true });
+    window.addEventListener('click', resetIdle, { passive: true });
+    window.addEventListener('scroll', resetIdle, { passive: true });
+  })();
+</script>
+</body>
+</html>
+
+

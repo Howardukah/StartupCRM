@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: startupbuild-platform
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+    domains:
+      - crm.startupbuild.tech
+      - storage.startupbuild.tech

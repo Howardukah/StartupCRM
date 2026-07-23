@@ -1,0 +1,2271 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:,">
+  <title>Login | Startup CRM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>
+    /* ============ FORCE DARK THEME + PROFILE SETUP GUARD ============ */
+    (function () {
+      try {
+        const token = localStorage.getItem('crm-session-token');
+        const profilePending = localStorage.getItem('crm-profile-setup-pending');
+        // If session exists but profile setup is still pending, stay on index.html
+        if (token && !profilePending) {
+          window.location.replace('dashboard.html');
+        }
+        // Always dark — remove any saved light theme preference
+        try { localStorage.removeItem('crm-theme'); } catch (e) { }
+        document.documentElement.removeAttribute('data-theme');
+      } catch (e) { }
+    })();
+  </script>
+  <style>
+    :root {
+      --primary: #12A3B4;
+      --primary-hover: #0E8C9A;
+      --bg: #0D0D10; /* Enforcing dark background globally for glassmorphism */
+      --surface: rgba(255, 255, 255, 0.03);
+      --surface-hover: rgba(255, 255, 255, 0.05);
+      --text-main: #FFFFFF;
+      --text-gray: #94A3B8;
+      --border-color: rgba(255, 255, 255, 0.1);
+      --border-focus: rgba(18, 163, 180, 0.5);
+      --link-color: #2FD6E4;
+      --radius: 24px;
+      --red: #EF4444;
+      --shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      --accent: #12A3B4;
+      --logo-dot: #2FD6E4;
+      --glass-blur: blur(24px);
+      --container-bg: rgba(20, 20, 25, 0.6);
+      --fl-label-bg: #141419;
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --input-border: rgba(255, 255, 255, 0.18);
+      --text-greeting: rgba(255, 255, 255, 0.95);
+      --text-muted-alt: rgba(255, 255, 255, 0.8);
+      --left-panel-bg: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0) 100%);
+    }
+
+    [data-theme="light"] {
+      --primary: #12A3B4;
+      --primary-hover: #0E8C9A;
+      --bg: #F7F7F5;
+      --surface: rgba(255, 255, 255, 0.5);
+      --surface-hover: rgba(255, 255, 255, 0.7);
+      --text-main: #111111;
+      --text-gray: #6B6B66;
+      --border-color: rgba(0, 0, 0, 0.1);
+      --border-focus: rgba(18, 163, 180, 0.5);
+      --link-color: #12A3B4;
+      --logo-dot: #12A3B4;
+      --container-bg: rgba(255, 255, 255, 0.8);
+      --fl-label-bg: #F7F7F5;
+      --glass-border: rgba(0, 0, 0, 0.08);
+      --input-border: rgba(0, 0, 0, 0.2);
+      --text-greeting: rgba(17, 17, 17, 0.95);
+      --text-muted-alt: rgba(17, 17, 17, 0.7);
+      --left-panel-bg: linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0) 100%);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1.5rem;
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden; /* For background orb */
+      position: relative;
+    }
+
+    /* Ambient Background Orbs */
+    body::before, body::after {
+      content: '';
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(100px);
+      z-index: -1;
+      animation: float 20s infinite alternate ease-in-out;
+    }
+    body::before {
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(18, 163, 180, 0.15) 0%, transparent 70%);
+      top: -100px;
+      left: -100px;
+    }
+    body::after {
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(122, 76, 255, 0.12) 0%, transparent 70%);
+      bottom: -150px;
+      right: -100px;
+      animation-delay: -10s;
+    }
+    @keyframes float {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(50px, 30px) scale(1.1); }
+    }
+
+    /* Main Container (Glassmorphism) */
+    .login-container {
+      display: flex;
+      width: 100%;
+      max-width: 1000px;
+      min-height: 600px;
+      max-height: 90vh;
+      background: var(--container-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border-radius: var(--radius);
+      box-shadow: 0 30px 60px rgba(0,0,0,0.4);
+      border: 1px solid var(--glass-border);
+      overflow: hidden;
+      position: relative;
+      z-index: 10;
+    }
+
+    /* Theme toggle styles */
+    .theme-toggle {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: 1px solid var(--border-color);
+      background: var(--surface);
+      color: var(--text-gray);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .theme-toggle--corner {
+      position: absolute;
+      top: 1.5rem;
+      right: 1.5rem;
+      z-index: 100;
+    }
+    .theme-toggle:hover {
+      background: var(--surface-hover);
+      color: var(--text-main);
+    }
+    .theme-toggle svg {
+      width: 18px;
+      height: 18px;
+    }
+    .theme-toggle .icon-moon { display: inline-flex; }
+    .theme-toggle .icon-sun { display: none; }
+    html[data-theme="light"] .theme-toggle .icon-moon { display: none; }
+    html[data-theme="light"] .theme-toggle .icon-sun { display: inline-flex; }
+
+    /* ========================================= */
+    /* LEFT PANEL (Immersive Brand)             */
+    /* ========================================= */
+    .left-panel {
+      flex: 1.1;
+      position: relative;
+      padding: 4rem 3rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      background: var(--left-panel-bg);
+      border-right: 1px solid var(--glass-border);
+      overflow: hidden;
+    }
+
+    .brand-logo-container {
+      position: absolute;
+      top: 2.5rem;
+      left: 2.5rem;
+      z-index: 2;
+    }
+
+    .logo {
+      display: inline-flex;
+      align-items: baseline;
+      font-weight: 800;
+      letter-spacing: -.02em;
+      font-size: 26px;
+      color: var(--logo-text);
+    }
+    .logo__dot {
+      color: var(--logo-dot);
+      margin-left: 1px;
+    }
+
+    .greeting { position: relative; z-index: 2; margin-top: 2rem;}
+    .greeting h1 {
+      font-size: 2.6rem;
+      font-weight: 300;
+      line-height: 1.15;
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+    .greeting h1 .bold {
+      font-weight: 700;
+      display: block;
+      margin-top: 5px;
+      color: var(--text-greeting);
+    }
+    .greeting h1 .uppercase {
+      font-weight: 800;
+      text-transform: uppercase;
+      font-size: 3rem;
+      display: block;
+      margin-top: 2px;
+      background: linear-gradient(90deg, #FFFFFF 0%, #2FD6E4 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.01em;
+    }
+
+
+    .is-typing::after {
+      content: '|';
+      color: #2FD6E4;
+      font-weight: 800;
+      animation: cursor-blink 0.8s step-end infinite;
+      margin-left: 2px;
+    }
+
+    .typing-cursor {
+      display: inline-block;
+      color: #2FD6E4;
+      font-weight: 800;
+      animation: cursor-blink 0.8s step-end infinite;
+      margin-left: 2px;
+    }
+    @keyframes cursor-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in-up {
+      animation: fadeInUp 1.4s ease forwards;
+    }
+
+    /* ========================================= */
+    /* RIGHT PANEL (Minimalist Form)             */
+    /* ========================================= */
+    .right-panel {
+      flex: 1;
+      padding: 3.5rem 3.5rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      background: transparent;
+      position: relative;
+    }
+
+    .form-title {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.02em;
+    }
+
+    .db-indicator-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      color: var(--text-gray);
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 6px 12px;
+      border-radius: 30px;
+      margin-bottom: 2rem;
+      width: fit-content;
+    }
+    .db-indicator-badge svg { color: var(--accent); }
+
+    .field { margin-bottom: 1.5rem; }
+    .field label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-gray);
+      margin-bottom: 0.5rem;
+    }
+
+    .input, select.input {
+      width: 100%;
+      padding: 14px 16px;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      font-family: inherit;
+      font-size: 0.95rem;
+      color: var(--text-main);
+      outline: none;
+      transition: all 0.2s ease;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .input:focus {
+      border-color: var(--accent);
+      background: rgba(0, 0, 0, 0.3);
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 0 0 3px rgba(18, 163, 180, 0.15);
+    }
+    .input::placeholder { color: rgba(255,255,255,0.25); }
+
+    .password-wrap { position: relative; }
+    .toggle-pw {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-gray);
+      padding: 4px;
+      transition: color 0.2s ease;
+    }
+    .toggle-pw:hover { color: var(--text-main); }
+
+    .forgot-pw {
+      display: block;
+      text-align: right;
+      font-size: 0.8rem;
+      color: var(--link-color);
+      text-decoration: none;
+      font-weight: 500;
+      margin-top: 0.5rem;
+      transition: opacity 0.2s;
+    }
+    .forgot-pw:hover { opacity: 0.8; text-decoration: none; }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      padding: 11px 28px;
+      background: var(--accent);
+      color: #fff;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      margin-top: 1rem;
+      white-space: nowrap;
+      user-select: none;
+      transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.4, 1),
+                  background-color 0.15s ease,
+                  box-shadow 0.15s ease,
+                  opacity 0.15s ease;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: var(--primary-hover);
+      transform: translateY(-1.5px) scale(1.015);
+      box-shadow: 0 4px 14px rgba(18, 163, 180, 0.35);
+    }
+    .btn-primary:active:not(:disabled) {
+      transform: translateY(0px) scale(0.96) !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+      transition-duration: 0.06s !important;
+    }
+    .btn-primary:disabled { cursor: wait; opacity: 0.65; transform: none; }
+
+    /* Wave-fill animation using app teal theme colors */
+    .btn-loading {
+      position: relative;
+      overflow: hidden;
+      pointer-events: none;
+      color: #ffffff !important;
+      background: var(--primary-hover) !important;
+      border-color: rgba(255,255,255,0.25) !important;
+      box-shadow: 0 4px 14px rgba(18, 163, 180, 0.4) !important;
+      text-shadow: none !important;
+      isolation: isolate;
+    }
+    .btn-loading::before {
+      content: '';
+      position: absolute;
+      bottom: -20%;
+      left: -30%;
+      width: 160%;
+      height: 160%;
+      background: linear-gradient(135deg, #2FD6E4 0%, var(--accent) 35%, var(--primary-hover) 70%, #084D58 100%);
+      border-radius: 42% 58% 55% 45% / 45% 40% 60% 55%;
+      animation: btn-wave 2s ease-in-out infinite;
+      z-index: -1;
+    }
+    @keyframes btn-wave {
+      0%   { transform: translate(0, 0) rotate(0deg); border-radius: 42% 58% 55% 45% / 45% 40% 60% 55%; }
+      33%  { transform: translate(3%, -4%) rotate(8deg); border-radius: 55% 45% 42% 58% / 60% 55% 45% 40%; }
+      66%  { transform: translate(-3%, -6%) rotate(-5deg); border-radius: 48% 52% 60% 40% / 52% 48% 40% 60%; }
+      100% { transform: translate(0, 0) rotate(0deg); border-radius: 42% 58% 55% 45% / 45% 40% 60% 55%; }
+    }
+
+
+    .error-text {
+      color: var(--red);
+      font-size: 0.85rem;
+      font-weight: 500;
+      margin-top: 0.5rem;
+      min-height: 18px;
+    }
+
+    [data-step] { display: none; }
+    @keyframes step-slide-in {
+      from { opacity: 0; transform: translateY(12px); filter: blur(4px); }
+      to { opacity: 1; transform: translateY(0); filter: blur(0); }
+    }
+    [data-step].is-active {
+      display: block;
+      animation: step-slide-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    }
+
+    @media (max-width: 868px) {
+      /* Keep side-by-side, but scale down paddings and fonts */
+      .login-container { max-width: 100%; min-height: 500px; }
+      .left-panel { padding: 2rem 1.5rem; }
+      .right-panel { padding: 2rem 1.5rem; }
+      .brand-logo-container { top: 1.5rem; left: 1.5rem; }
+      .signin-welcome h2 { font-size: 2rem; }
+      #greeting-text, #good-day-text { font-size: 1.8rem !important; }
+      #have-a-text { font-size: 1.4rem !important; margin-top: 15px !important; }
+    }
+
+    /* ── Floating-label inputs (notched border style) ── */
+    .fl-field {
+      position: relative;
+      margin-bottom: 1.8rem;
+    }
+    .fl-field .fl-icon {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--link-color);
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      transition: top 0.2s ease, transform 0.2s ease;
+    }
+    .fl-field .fl-input {
+      width: 100%;
+      padding: 14px 16px 14px 42px;
+      background: transparent;
+      border: 1.5px solid var(--input-border);
+      border-radius: 12px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.95rem;
+      color: var(--text-main);
+      outline: none;
+      transition: border-color 0.25s ease, box-shadow 0.25s ease;
+    }
+    .fl-field .fl-input:focus {
+      border-color: var(--link-color);
+      box-shadow: 0 0 0 3px rgba(47, 214, 228, 0.25);
+    }
+    .fl-field .fl-input::placeholder { color: transparent; }
+    /* Prevent browser autofill from flashing white/light background */
+    .fl-field .fl-input:-webkit-autofill,
+    .fl-field .fl-input:-webkit-autofill:hover,
+    .fl-field .fl-input:-webkit-autofill:focus {
+      -webkit-box-shadow: 0 0 0 1000px var(--fl-label-bg) inset !important;
+      -webkit-text-fill-color: var(--text-main) !important;
+      caret-color: var(--text-main);
+      transition: background-color 9999s ease-in-out 0s;
+    }
+
+    /* Label rests centered inside the field */
+    .fl-field .fl-label {
+      position: absolute;
+      left: 42px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text-gray);
+      pointer-events: none;
+      transition: all 0.2s cubic-bezier(0.4,0,0.2,1);
+      padding: 0 5px;
+      background: transparent;
+      line-height: 1;
+    }
+    /* Floated: sits ON the top border line at top-left */
+    .fl-field .fl-input:focus ~ .fl-label,
+    .fl-field .fl-input:not(:placeholder-shown) ~ .fl-label {
+      top: 0;
+      left: 12px;
+      transform: translateY(-50%);
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--link-color);
+      letter-spacing: 0.04em;
+      background: var(--fl-label-bg); /* matches container/theme, cuts the border */
+      padding: 0 5px;
+    }
+    /* Password toggle inside fl-field */
+    .fl-field .fl-pw-toggle {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-gray);
+      padding: 4px;
+      transition: color 0.2s;
+    }
+    .fl-field .fl-pw-toggle:hover { color: var(--text-main); }
+
+    /* Welcome header for signin */
+    .signin-welcome {
+      text-align: center;
+      margin-bottom: 2.2rem;
+    }
+    .signin-welcome h2 {
+      font-size: 2.6rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      background: linear-gradient(
+        90deg,
+        #2FD6E4 0%,
+        #ffffff 30%,
+        #12A3B4 55%,
+        #ffffff 75%,
+        #2FD6E4 100%
+      );
+      background-size: 300% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: welcome-flow 8s linear infinite;
+    }
+    @keyframes welcome-flow {
+      0%   { background-position: 0% center; }
+      100% { background-position: 300% center; }
+    }
+    .signin-welcome p {
+      font-size: 0.9rem;
+      color: var(--text-gray);
+      margin-top: 0.4rem;
+    }
+
+    /* ====== CUSTOM DATEPICKER ====== */
+    .crm-datepicker {
+      position: relative;
+    }
+    .crm-datepicker__trigger {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+    }
+    .crm-datepicker__display {
+      flex: 1;
+      color: var(--text-main);
+      font-size: 0.9rem;
+    }
+    .crm-datepicker__display.placeholder {
+      color: var(--text-gray);
+      opacity: 0.7;
+    }
+    .crm-datepicker__panel {
+      position: absolute;
+      z-index: 9999;
+      top: calc(100% + 6px);
+      left: 0;
+      min-width: 280px;
+      background: var(--fl-label-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+      user-select: none;
+      backdrop-filter: var(--glass-blur);
+    }
+    .crm-dp-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .crm-dp-nav {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .crm-dp-nav-btn {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: transparent;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-gray);
+      transition: background 0.15s, color 0.15s;
+    }
+    .crm-dp-nav-btn:hover {
+      background: var(--surface);
+      color: var(--text-main);
+    }
+    .crm-dp-month-label {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-main);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+    .crm-dp-month-label:hover {
+      background: var(--surface);
+    }
+    .crm-dp-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 2px;
+    }
+    .crm-dp-dow {
+      text-align: center;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-gray);
+      padding: 4px 0 8px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      opacity: 0.8;
+    }
+    .crm-dp-day {
+      width: 32px;
+      height: 32px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      font-size: 12.5px;
+      cursor: pointer;
+      color: var(--text-main);
+      transition: background 0.12s, color 0.12s;
+      border: none;
+      background: transparent;
+    }
+    .crm-dp-day:hover:not(.crm-dp-day--other):not(.crm-dp-day--selected) {
+      background: var(--surface);
+    }
+    .crm-dp-day--other {
+      color: var(--text-gray);
+      opacity: 0.35;
+      cursor: default;
+    }
+    .crm-dp-day--today {
+      font-weight: 700;
+      color: var(--link-color);
+    }
+    .crm-dp-day--selected {
+      background: var(--link-color);
+      color: #000 !important;
+      font-weight: 700;
+    }
+    .crm-dp-footer {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border-color);
+    }
+    .crm-dp-foot-btn {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--link-color);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+    .crm-dp-foot-btn:hover {
+      background: var(--surface);
+    }
+    .crm-dp-ym-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .crm-dp-ym-btn {
+      padding: 6px 4px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: var(--text-main);
+      text-align: center;
+      transition: background 0.12s;
+    }
+    .crm-dp-ym-btn:hover {
+      background: var(--surface);
+    }
+    .crm-dp-ym-btn--active {
+      background: var(--link-color);
+      color: #000;
+      font-weight: 700;
+    }
+    .crm-dp-year-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    /* ====== CUSTOM THEMED SELECT (Sex/Gender etc.) ====== */
+    .crm-select { position: relative; }
+    .crm-select__trigger {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+    }
+    .crm-select__display {
+      flex: 1;
+      color: var(--text-main);
+      font-size: 0.95rem;
+    }
+    .crm-select__display.placeholder {
+      color: var(--text-gray);
+      opacity: 0.7;
+    }
+    .crm-select__panel {
+      position: absolute;
+      z-index: 9999;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      background: var(--fl-label-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 6px;
+      overflow: hidden;
+      backdrop-filter: var(--glass-blur);
+    }
+    .crm-select__option {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .crm-select__option:hover {
+      background: var(--surface-hover);
+    }
+    .crm-select__option--selected {
+      background: rgba(47, 214, 228, 0.12);
+      color: var(--link-color);
+      font-weight: 600;
+    }
+
+    /* ── Compact sizing for the longer Complete-Your-Profile step ── */
+    [data-step="profile-setup"] .form-title {
+      font-size: 1.35rem;
+      margin-bottom: 0.6rem;
+    }
+    [data-step="profile-setup"] .field {
+      margin-bottom: 0.55rem;
+    }
+    [data-step="profile-setup"] .field label {
+      margin-bottom: 0.2rem;
+      font-size: 0.76rem;
+      letter-spacing: 0.03em;
+    }
+    [data-step="profile-setup"] .input {
+      padding: 8px 12px;
+      font-size: 0.85rem;
+    }
+    [data-step="profile-setup"] .btn-primary {
+      margin-top: 0.5rem;
+      padding: 10px;
+      font-size: 0.9rem;
+    }
+    [data-step="profile-setup"] .error-text {
+      min-height: 10px;
+      margin-top: 0.2rem;
+      font-size: 0.76rem;
+    }
+    .prof-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0 12px;
+    }
+  </style>
+<style>
+    .btn, button:not(.theme-toggle):not(.team-add-btn):not(.avatar):not(.circle-btn), .input, .field__input, input[type="text"], input[type="search"], input[type="number"], input[type="email"], input[type="password"] {
+      border-radius: 4px !important;
+    }
+    .theme-toggle, .team-add-btn {
+      border-radius: 50% !important;
+    }
+
+    /* Custom Lockout Modal CSS */
+    .custom-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.3s ease;
+    }
+    .custom-modal.hidden {
+      display: none;
+      pointer-events: none;
+      opacity: 0;
+    }
+    .custom-modal__overlay {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      background: rgba(13, 13, 16, 0.8);
+      backdrop-filter: blur(10px);
+    }
+    .custom-modal__content {
+      position: relative;
+      background: rgba(20, 20, 25, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(24px);
+      padding: 2rem;
+      border-radius: 24px;
+      width: 90%;
+      max-width: 380px;
+      text-align: center;
+      box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      animation: modalPop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .custom-modal__icon {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+    .custom-modal__title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+    .custom-modal__text {
+      font-size: 0.9rem;
+      color: var(--text-gray);
+      line-height: 1.4;
+    }
+    .custom-modal__spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid rgba(18, 163, 180, 0.2);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s infinite linear;
+    }
+
+    @keyframes modalPop {
+      from { transform: scale(0.9) translateY(10px); opacity: 0; }
+      to { transform: scale(1) translateY(0); opacity: 1; }
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ============ SLIDE-IN TOAST SYSTEM (Top Right Dock) ============ */
+    .toast-stack {
+      position: fixed;
+      top: 24px;
+      right: 24px;
+      z-index: 999999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 400px;
+      width: calc(100vw - 48px);
+      pointer-events: none;
+    }
+
+    .toast {
+      pointer-events: auto;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px 16px;
+      background: rgba(20, 20, 26, 0.94);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
+      border-radius: 12px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      color: #ffffff;
+      font-size: 13.5px;
+      font-weight: 500;
+      line-height: 1.45;
+      animation: toastSlideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .toast--leaving {
+      animation: toastSlideOutRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+    }
+
+    @keyframes toastSlideInRight {
+      from { transform: translateX(120%); opacity: 0; }
+      to   { transform: translateX(0); opacity: 1; }
+    }
+
+    @keyframes toastSlideOutRight {
+      from { transform: translateX(0); opacity: 1; }
+      to   { transform: translateX(120%); opacity: 0; }
+    }
+
+    .toast--error {
+      border-left: 4px solid #ef4444;
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.16) 0%, rgba(20, 20, 26, 0.96) 100%);
+    }
+
+    .toast--success {
+      border-left: 4px solid #10b981;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.16) 0%, rgba(20, 20, 26, 0.96) 100%);
+    }
+
+    .toast--warning {
+      border-left: 4px solid #f59e0b;
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.16) 0%, rgba(20, 20, 26, 0.96) 100%);
+    }
+
+    .toast--info {
+      border-left: 4px solid var(--primary, #12a3b4);
+      background: linear-gradient(135deg, rgba(18, 163, 180, 0.16) 0%, rgba(20, 20, 26, 0.96) 100%);
+    }
+
+    .toast__icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .toast--error .toast__icon { color: #ef4444; }
+    .toast--success .toast__icon { color: #10b981; }
+    .toast--warning .toast__icon { color: #f59e0b; }
+    .toast--info .toast__icon { color: #12a3b4; }
+
+    .toast__body {
+      flex: 1;
+      min-width: 0;
+      word-break: break-word;
+    }
+
+    .toast__close {
+      background: transparent;
+      border: 0;
+      color: rgba(255, 255, 255, 0.6);
+      cursor: pointer;
+      padding: 2px 5px;
+      font-size: 14px;
+      line-height: 1;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+      flex-shrink: 0;
+    }
+    .toast__close:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .toast__progress {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 3px;
+      background: currentColor;
+      opacity: 0.5;
+      transition: width 0.1s linear;
+    }
+    </style>
+</head>
+
+<body>
+
+
+  <main class="login-container">
+
+        <!-- LEFT PANEL -->
+    <div class="left-panel">
+      <div class="brand-logo-container">
+        <span class="logo logo--lg">Start<span class="logo__dot">up.</span></span>
+      </div>
+      <div class="greeting">
+        <h1>
+          <span id="greeting-text" class="uppercase" style="display: block; min-height: 1.15em; font-size: 2.2rem; line-height: 1.2;"></span>
+          <span id="have-a-text" class="bold" style="display: block; min-height: 1.15em; font-size: 1.75rem; margin-top: 28px; color: #2FD6E4; font-family: 'Caveat', cursive; font-weight: 600; letter-spacing: 0.02em;"></span>
+          <span style="display: block; min-height: 1.15em; margin-top: 8px;"><span id="good-day-text" class="uppercase" style="font-size: 2.2rem; line-height: 1.2;"></span></span>
+        </h1>
+        <div id="motivation-box" style="opacity: 0; transition: opacity 1s ease; margin-top: 2rem; color: var(--text-muted-alt); font-size: 0.95rem; line-height: 1.6; font-style: italic;">
+          <span style="font-weight: 600; color: var(--link-color); font-style: normal; display: block; margin-bottom: 0.4rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em;">Did you know?</span>
+          <span id="motivation-text" style="opacity: 0; transition: opacity 0.8s ease; display: block; min-height: 3em;"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="right-panel">
+
+      <!-- STEP: LOADING -->
+      <div data-step="loading" class="is-active" style="text-align:center; padding:2rem 0;">
+        <div style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent-bright);border-radius:50%;animation:spin 0.7s linear infinite;margin:0 auto 1rem;"></div>
+        <p style="color:var(--text-muted);font-size:0.875rem;">Connecting to cloud…</p>
+      </div>
+
+      <!-- STEP: SETUP FIRST ADMIN -->
+      <div data-step="setup">
+        <h2 class="form-title">Setup Admin</h2>
+        <div class="db-indicator-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+          </svg>
+          Cloud workspace setup
+        </div>
+        <div class="field">
+          <label for="setup-name">Full name</label>
+          <input id="setup-name" class="input" placeholder="Your name" />
+        </div>
+        <div class="field">
+          <label for="setup-email">Work email</label>
+          <input id="setup-email" class="input" type="email" placeholder="you@startup.com" />
+        </div>
+        <div class="field">
+          <label for="setup-password">Password</label>
+          <div class="password-wrap">
+            <input id="setup-password" class="input" type="password" placeholder="Choose a password" />
+            <button type="button" class="toggle-pw" data-pw-toggle-for="setup-password">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="setup-password2">Confirm password</label>
+          <div class="password-wrap">
+            <input id="setup-password2" class="input" type="password" placeholder="Re-enter password" />
+            <button type="button" class="toggle-pw" data-pw-toggle-for="setup-password2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <p class="error-text" id="setup-error"></p>
+        <button type="button" class="btn-primary" id="btn-setup" onclick="submitFirstAdmin()">Create Workspace</button>
+      </div>
+
+      <!-- STEP: SIGN IN -->
+      <div data-step="signin">
+
+        <!-- Welcome header -->
+        <div class="signin-welcome">
+          <h2>Welcome</h2>
+          <p>Login with Email &amp; Password</p>
+        </div>
+
+        <!-- EMAIL SUB-STEP -->
+        <div id="signin-email-step">
+          <!-- Email floating label -->
+          <div class="fl-field">
+            <span class="fl-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            </span>
+            <input type="email" id="signin-user" class="fl-input" placeholder="email"
+              oninput="document.getElementById('signin-error').textContent=''"
+              onkeydown="if(event.key==='Enter') submitEmail()" />
+            <label class="fl-label" for="signin-user">Email Id</label>
+          </div>
+          <p class="error-text" id="signin-error"></p>
+          <div style="display:flex; justify-content:center; margin-top:0.5rem;">
+            <button type="button" class="btn-primary" id="btn-continue" onclick="submitEmail()" style="width:auto; min-width:160px; padding:12px 36px;">Continue</button>
+          </div>
+        </div>
+
+        <!-- PASSWORD SUB-STEP -->
+        <div id="signin-password-step" style="display:none;">
+          <!-- Email pill with change link -->
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:1.5rem; padding:10px 14px; background:rgba(47,214,228,0.06); border:1.5px solid rgba(47,214,228,0.2); border-radius:12px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2FD6E4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <span id="signin-email-display" style="font-size:0.88rem; color:var(--text-muted-alt); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+            <a href="#" onclick="changeEmail(event)" style="font-size:0.8rem; color:#2FD6E4; text-decoration:none; white-space:nowrap; flex-shrink:0; font-weight:500;">Change</a>
+          </div>
+
+          <!-- Password floating label -->
+          <div class="fl-field">
+            <span class="fl-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </span>
+            <input id="signin-password" class="fl-input" type="password" placeholder="password"
+              onkeydown="if(event.key==='Enter') submitSignIn()" />
+            <label class="fl-label" for="signin-password">Password</label>
+            <button type="button" class="fl-pw-toggle" data-pw-toggle-for="signin-password">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <a href="#" class="forgot-pw" onclick="event.preventDefault(); alert('Please ask your CRM Admin to reset your password.')">forgot password?</a>
+
+          <p class="error-text" id="signin-pw-error"></p>
+          <div style="display:flex; justify-content:center; margin-top:0.5rem;">
+            <button type="button" class="btn-primary" id="btn-signin" onclick="submitSignIn()" style="width:auto; min-width:160px; padding:12px 36px;">Login</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP: NEW PASSWORD -->
+      <div data-step="newpw">
+        <h2 class="form-title">New Password</h2>
+        <div class="field">
+          <label for="newpw-1">New password</label>
+          <div class="password-wrap">
+            <input id="newpw-1" class="input" type="password" placeholder="New password" />
+            <button type="button" class="toggle-pw" data-pw-toggle-for="newpw-1">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="newpw-2">Confirm new password</label>
+          <div class="password-wrap">
+            <input id="newpw-2" class="input" type="password" placeholder="Re-enter new password" />
+            <button type="button" class="toggle-pw" data-pw-toggle-for="newpw-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <p class="error-text" id="newpw-error"></p>
+        <button type="button" class="btn-primary" id="btn-newpw" onclick="submitForcedPasswordChange()">Set password</button>
+      </div>
+
+      <!-- STEP: COMPLETE PROFILE -->
+      <div data-step="profile-setup">
+        <h2 class="form-title" style="text-align:center;">Complete Your Profile</h2>
+
+        <!-- Profile Photo Upload -->
+        <div style="display:flex; flex-direction:column; align-items:center; gap:4px; margin-bottom:0.65rem;">
+          <div style="position:relative; width:56px; height:56px; cursor:pointer;" onclick="document.getElementById('setup-photo-input').click()">
+            <div id="setup-photo-preview" style="width:56px; height:56px; border-radius:50%; background:rgba(47,214,228,0.12); display:flex; align-items:center; justify-content:center; overflow:hidden; border:2px dashed rgba(47,214,228,0.4); transition:border-color 0.2s;">
+              <span id="setup-photo-initials" style="font-size:1.1rem; font-weight:700; color:var(--accent-bright);">?</span>
+              <img id="setup-photo-img" src="" style="display:none; width:100%; height:100%; object-fit:cover;" />
+            </div>
+            <div style="position:absolute; bottom:0; right:0; width:17px; height:17px; background:#2FD6E4; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 6px rgba(0,0,0,0.3);">
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            </div>
+          </div>
+          <input type="file" id="setup-photo-input" accept="image/*" style="display:none;" onchange="handleSetupPhotoChange(this)">
+          <span style="font-size:0.68rem; color:var(--text-gray);">Click to upload profile photo</span>
+        </div>
+
+        <div class="field">
+          <label for="newprof-name">Full Name</label>
+          <input id="newprof-name" class="input" type="text" placeholder="Your full name" oninput="updateSetupInitials(this.value)" />
+        </div>
+
+        <!-- Row: Birthday + Gender -->
+        <div class="prof-row">
+          <div class="field">
+            <label for="newprof-birthday">Birthday</label>
+            <input id="newprof-birthday" class="input" type="text" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10" oninput="formatBirthdayInput(this)" />
+          </div>
+          <div class="field">
+            <label for="newprof-gender">Gender</label>
+            <div class="crm-select" id="cs-newprof-gender">
+              <button type="button" class="crm-select__trigger input" id="cs-newprof-gender-trigger" onclick="toggleCrmSelect('cs-newprof-gender')">
+                <span class="crm-select__display placeholder" id="cs-newprof-gender-display">Select</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:.6"><polyline points="6,9 12,15 18,9"/></svg>
+              </button>
+              <input type="hidden" id="newprof-gender">
+              <div class="crm-select__panel" id="cs-newprof-gender-panel" style="display:none;">
+                <div class="crm-select__option" onclick="selectCrmSelectOption('cs-newprof-gender','Male','Male')">Male</div>
+                <div class="crm-select__option" onclick="selectCrmSelectOption('cs-newprof-gender','Female','Female')">Female</div>
+                <div class="crm-select__option" onclick="selectCrmSelectOption('cs-newprof-gender','Other','Other')">Other</div>
+                <div class="crm-select__option" onclick="selectCrmSelectOption('cs-newprof-gender','Prefer not to say','Prefer not to say')">Prefer not to say</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row: Personal Email + Mobile -->
+        <div class="prof-row">
+          <div class="field">
+            <label for="newprof-pemail">Personal Email</label>
+            <input id="newprof-pemail" class="input" type="email" placeholder="personal@example.com" />
+          </div>
+          <div class="field">
+            <label for="newprof-mobile">Mobile</label>
+            <input id="newprof-mobile" class="input" type="tel" placeholder="+1 234 567 8900" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="newprof-security-question">Security Question</label>
+          <div class="crm-select" id="cs-newprof-question">
+            <button type="button" class="crm-select__trigger input" id="cs-newprof-question-trigger" onclick="toggleCrmSelect('cs-newprof-question')">
+              <span class="crm-select__display placeholder" id="cs-newprof-question-display">Select a security question</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:.6"><polyline points="6,9 12,15 18,9"/></svg>
+            </button>
+            <input type="hidden" id="newprof-security-question">
+            <div class="crm-select__panel" id="cs-newprof-question-panel" style="display:none;">
+              <div class="crm-select__option" onclick="selectCrmSelectOption('cs-newprof-question','What was the name of your first pet?','What was the name of your first pet?')">What was the name of your first pet?</div>
+              <div class="crm-select__option" onclick="selectCrmSelectOption('cs-newprof-question','What is your mothers maiden name?','What is your mothers maiden name?')">What is your mothers maiden name?</div>
+              <div class="crm-select__option" onclick="selectCrmSelectOption('cs-newprof-question','In what city were you born?','In what city were you born?')">In what city were you born?</div>
+              <div class="crm-select__option" onclick="selectCrmSelectOption('cs-newprof-question','What was the name of your first school?','What was the name of your first school?')">What was the name of your first school?</div>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label for="newprof-security-answer">Security Answer</label>
+          <input id="newprof-security-answer" class="input" type="text" placeholder="Your answer (case-insensitive)" />
+        </div>
+        <p class="error-text" id="newprof-error"></p>
+        <button type="button" class="btn-primary" id="btn-newprof" onclick="submitProfileSetup()">Save &amp; Enter Workspace</button>
+      </div>
+
+      <!-- STEP: SECURITY CHALLENGE -->
+      <div data-step="security-challenge">
+        <h2 class="form-title" style="text-align:center;">Verify Your Identity</h2>
+        <p style="text-align: center; margin-bottom: 20px; font-size: 0.9rem; color: var(--text-gray); line-height: 1.4;">
+          Please select your security question and provide your answer to verify your identity.
+        </p>
+        
+        <div class="field">
+          <label for="challenge-security-question">Your Security Question</label>
+          <div class="crm-select" id="cs-challenge-question">
+            <button type="button" class="crm-select__trigger input" id="cs-challenge-question-trigger" onclick="toggleCrmSelect('cs-challenge-question')">
+              <span class="crm-select__display placeholder" id="cs-challenge-question-display">Select your security question</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:.6"><polyline points="6,9 12,15 18,9"/></svg>
+            </button>
+            <input type="hidden" id="challenge-security-question">
+            <div class="crm-select__panel" id="cs-challenge-question-panel" style="display:none;">
+              <div class="crm-select__option" onclick="selectCrmSelectOption('cs-challenge-question','What was the name of your first pet?','What was the name of your first pet?')">What was the name of your first pet?</div>
+              <div class="crm-select__option" onclick="selectCrmSelectOption('cs-challenge-question','What is your mothers maiden name?','What is your mothers maiden name?')">What is your mothers maiden name?</div>
+              <div class="crm-select__option" onclick="selectCrmSelectOption('cs-challenge-question','In what city were you born?','In what city were you born?')">In what city were you born?</div>
+              <div class="crm-select__option" onclick="selectCrmSelectOption('cs-challenge-question','What was the name of your first school?','What was the name of your first school?')">What was the name of your first school?</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="challenge-security-answer">Your Answer</label>
+          <input id="challenge-security-answer" class="input" type="text" placeholder="Your answer (case-insensitive)" />
+        </div>
+        
+        <p class="error-text" id="challenge-error" style="color: #ff4d4d; font-size: 0.85rem; margin-top: 8px;"></p>
+        <button type="button" class="btn-primary" id="btn-challenge" onclick="submitSecurityChallenge()">Verify &amp; Log In</button>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Lockout Notification Modal -->
+  <div id="lockout-modal" class="custom-modal hidden">
+    <div class="custom-modal__overlay"></div>
+    <div class="custom-modal__content">
+      <div class="custom-modal__icon">
+        <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+      <h3 class="custom-modal__title">Too Many Failed Attempts</h3>
+      <p class="custom-modal__text">Redirecting you to the login page</p>
+      <div class="custom-modal__spinner"></div>
+    </div>
+  </div>
+
+  <script>
+    /* ============ TYPING GREETING ANIMATION ============ */
+    function typeText(el, text, speed) {
+      return new Promise(resolve => {
+        let i = 0;
+        el.textContent = '';
+        (function step() {
+          if (i < text.length) {
+            el.textContent += text.charAt(i);
+            i++;
+            setTimeout(step, speed);
+          } else resolve();
+        })();
+      });
+    }
+
+    async function runGreetingAnimation() {
+      const previewParam = new URLSearchParams(window.location.search).get('greeting');
+      const previewHour = previewParam === 'morning' ? 8
+                        : previewParam === 'afternoon' ? 14
+                        : previewParam === 'evening' ? 20
+                        : null;
+      const hour = previewHour !== null ? previewHour : new Date().getHours();
+      let greeting = 'Hello,';
+      let subText = 'Welcome';
+
+      if (hour < 12) {
+        greeting = 'Good morning,';
+        subText = 'Ready to start your productive day?';
+      } else if (hour < 17) {
+        greeting = 'Good afternoon,';
+        subText = 'How is the productivity going?';
+      } else {
+        greeting = 'Working late?';
+        subText = 'Are you still on productivity?';
+      }
+
+      const isEvening = (hour >= 17);
+      const greetingEl = document.getElementById('greeting-text');
+      const haveAEl = document.getElementById('have-a-text');
+      const goodDayEl = document.getElementById('good-day-text');
+
+      if (greetingEl && haveAEl && goodDayEl) {
+        greetingEl.style.opacity = '0';
+        greetingEl.textContent = greeting;
+        greetingEl.classList.add('fade-in-up');
+
+        await new Promise(r => setTimeout(r, 900));
+        haveAEl.classList.add('is-typing');
+        await typeText(haveAEl, subText, 90);
+        goodDayEl.closest('span').style.display = 'none';
+
+        const motivations = [
+          "Teams using a CRM spend up to 40% less time on manual data entry.",
+          "The average sales rep saves 5+ hours a week by automating follow-ups.",
+          "A tidy pipeline today means fewer surprises at month-end.",
+          "Small daily updates compound into big monthly wins.",
+          "Responding to a lead within 5 minutes makes you 9x more likely to convert them.",
+          "Happy clients refer 3x more often when follow-ups never slip through the cracks.",
+          "Momentum is built one completed task at a time.",
+          "Progress, not perfection, wins the week.",
+          "The best time to update your pipeline was yesterday. The second best time is now."
+        ];
+        const motiTextEl = document.getElementById('motivation-text');
+        const motiBoxEl = document.getElementById('motivation-box');
+
+        if (motiTextEl && motiBoxEl) {
+          let currentIndex = 0;
+          motiBoxEl.style.opacity = '1';
+          const showNextMotivation = () => {
+            motiTextEl.style.opacity = '0';
+            setTimeout(() => {
+              motiTextEl.textContent = `"${motivations[currentIndex]}"`;
+              motiTextEl.style.opacity = '1';
+              currentIndex = (currentIndex + 1) % motivations.length;
+              setTimeout(showNextMotivation, 6000);
+            }, 800);
+          };
+          showNextMotivation();
+        }
+      }
+    }
+
+    /* ============ PASSWORD SHOW/HIDE ============ */
+    document.querySelectorAll('[data-pw-toggle-for]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = document.getElementById(btn.dataset.pwToggleFor);
+        const isPw = input.type === 'password';
+        input.type = isPw ? 'text' : 'password';
+        btn.innerHTML = isPw
+          ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a19.77 19.77 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a19.86 19.86 0 0 1-3.17 4.19M1 1l22 22"/><path d="M9.53 9.53a3.5 3.5 0 0 0 4.95 4.95"/></svg>'
+          : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+      });
+    });
+
+    /* ============ CUSTOM DATEPICKER ENGINE ============ */
+    let activeDatepickers = {};
+
+    function toggleDatepicker(dpId) {
+      const panel = document.getElementById(dpId + '-panel');
+      if (!panel) return;
+      const isHidden = panel.style.display === 'none';
+      
+      document.querySelectorAll('.crm-datepicker__panel').forEach(p => p.style.display = 'none');
+      
+      if (isHidden) {
+        panel.style.display = 'block';
+        const hiddenInput = document.getElementById(dpId).querySelector('input[type="hidden"]');
+        const currentVal = hiddenInput.value || '';
+        let initYear = new Date().getFullYear();
+        let initMonth = new Date().getMonth();
+        
+        if (currentVal) {
+          const parts = currentVal.split('-');
+          if (parts.length === 3) {
+            initYear = parseInt(parts[0], 10);
+            initMonth = parseInt(parts[1], 10) - 1;
+          }
+        }
+        
+        activeDatepickers[dpId] = {
+          year: initYear,
+          month: initMonth,
+          selectedDate: currentVal,
+          viewMode: 'days'
+        };
+        renderDatepickerPanel(dpId);
+      } else {
+        panel.style.display = 'none';
+      }
+    }
+
+    function renderDatepickerPanel(dpId) {
+      const panel = document.getElementById(dpId + '-panel');
+      if (!panel || !activeDatepickers[dpId]) return;
+      
+      const state = activeDatepickers[dpId];
+      const { year, month, selectedDate, viewMode } = state;
+      
+      const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      let html = '';
+      
+      if (viewMode === 'days') {
+        const prevSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>`;
+        const nextSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>`;
+        
+        html += `<div class="crm-dp-header">
+          <button type="button" class="crm-dp-nav-btn" onclick="changeDatepickerMonth('${dpId}', -1)">${prevSvg}</button>
+          <span class="crm-dp-month-label" onclick="setDatepickerViewMode('${dpId}', 'months')">${monthNames[month]} ${year}</span>
+          <button type="button" class="crm-dp-nav-btn" onclick="changeDatepickerMonth('${dpId}', 1)">${nextSvg}</button>
+        </div>`;
+        
+        html += `<div class="crm-dp-grid">`;
+        const dows = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+        dows.forEach(d => {
+          html += `<div class="crm-dp-dow">${d}</div>`;
+        });
+        
+        const firstDayIndex = new Date(year, month, 1).getDay();
+        const prevMonthLastDay = new Date(year, month, 0).getDate();
+        const currentMonthLastDay = new Date(year, month + 1, 0).getDate();
+        
+        for (let i = firstDayIndex - 1; i >= 0; i--) {
+          html += `<div class="crm-dp-day crm-dp-day--other">${prevMonthLastDay - i}</div>`;
+        }
+        
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        
+        for (let day = 1; day <= currentMonthLastDay; day++) {
+          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const isSelected = (dateStr === selectedDate);
+          const isToday = (dateStr === todayStr);
+          
+          let classes = 'crm-dp-day';
+          if (isSelected) classes += ' crm-dp-day--selected';
+          if (isToday) classes += ' crm-dp-day--today';
+          
+          html += `<button type="button" class="${classes}" onclick="selectDatepickerDate('${dpId}', '${dateStr}')">${day}</button>`;
+        }
+        
+        const totalCells = firstDayIndex + currentMonthLastDay;
+        const remaining = 42 - totalCells;
+        for (let i = 1; i <= remaining; i++) {
+          html += `<div class="crm-dp-day crm-dp-day--other">${i}</div>`;
+        }
+        
+        html += `</div>`;
+        
+        html += `<div class="crm-dp-footer">
+          <button type="button" class="crm-dp-foot-btn" onclick="clearDatepicker('${dpId}')">Clear</button>
+          <button type="button" class="crm-dp-foot-btn" onclick="selectDatepickerToday('${dpId}')">Today</button>
+        </div>`;
+        
+      } else if (viewMode === 'months') {
+        html += `<div class="crm-dp-header" style="justify-content:center;">
+          <span class="crm-dp-month-label" onclick="setDatepickerViewMode('${dpId}', 'years')">${year}</span>
+        </div>`;
+        html += `<div class="crm-dp-ym-grid">`;
+        monthNames.forEach((mName, idx) => {
+          const isActive = (idx === month);
+          const activeClass = isActive ? 'crm-dp-ym-btn--active' : '';
+          html += `<button type="button" class="crm-dp-ym-btn ${activeClass}" onclick="setDatepickerMonth('${dpId}', ${idx})">${mName.slice(0, 3)}</button>`;
+        });
+        html += `</div>`;
+        
+      } else if (viewMode === 'years') {
+        const startYear = year - 4;
+        const endYear = year + 7;
+        
+        const prevSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>`;
+        const nextSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>`;
+        
+        html += `<div class="crm-dp-year-nav">
+          <button type="button" class="crm-dp-nav-btn" onclick="shiftDatepickerYears('${dpId}', -12)">${prevSvg}</button>
+          <span style="font-size:13px; font-weight:600; color:var(--text-main);">${startYear} - ${endYear}</span>
+          <button type="button" class="crm-dp-nav-btn" onclick="shiftDatepickerYears('${dpId}', 12)">${nextSvg}</button>
+        </div>`;
+        
+        html += `<div class="crm-dp-ym-grid">`;
+        for (let y = startYear; y <= endYear; y++) {
+          const isActive = (y === year);
+          const activeClass = isActive ? 'crm-dp-ym-btn--active' : '';
+          html += `<button type="button" class="crm-dp-ym-btn ${activeClass}" onclick="setDatepickerYear('${dpId}', ${y})">${y}</button>`;
+        }
+        html += `</div>`;
+      }
+      
+      panel.innerHTML = html;
+    }
+
+    function changeDatepickerMonth(dpId, direction) {
+      const state = activeDatepickers[dpId];
+      if (!state) return;
+      let newMonth = state.month + direction;
+      let newYear = state.year;
+      if (newMonth < 0) {
+        newMonth = 11;
+        newYear--;
+      } else if (newMonth > 11) {
+        newMonth = 0;
+        newYear++;
+      }
+      state.month = newMonth;
+      state.year = newYear;
+      renderDatepickerPanel(dpId);
+    }
+
+    function setDatepickerViewMode(dpId, mode) {
+      const state = activeDatepickers[dpId];
+      if (!state) return;
+      state.viewMode = mode;
+      renderDatepickerPanel(dpId);
+    }
+
+    function setDatepickerMonth(dpId, mIndex) {
+      const state = activeDatepickers[dpId];
+      if (!state) return;
+      state.month = mIndex;
+      state.viewMode = 'days';
+      renderDatepickerPanel(dpId);
+    }
+
+    function setDatepickerYear(dpId, year) {
+      const state = activeDatepickers[dpId];
+      if (!state) return;
+      state.year = year;
+      state.viewMode = 'months';
+      renderDatepickerPanel(dpId);
+    }
+
+    function shiftDatepickerYears(dpId, diff) {
+      const state = activeDatepickers[dpId];
+      if (!state) return;
+      state.year += diff;
+      renderDatepickerPanel(dpId);
+    }
+
+    function selectDatepickerDate(dpId, dateStr) {
+      const hiddenInput = document.getElementById(dpId).querySelector('input[type="hidden"]');
+      hiddenInput.value = dateStr;
+      
+      const displaySpan = document.getElementById(dpId + '-display');
+      displaySpan.textContent = formatDateStringFriendly(dateStr);
+      displaySpan.classList.remove('placeholder');
+      
+      const panel = document.getElementById(dpId + '-panel');
+      if (panel) panel.style.display = 'none';
+    }
+
+    function selectDatepickerToday(dpId) {
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      selectDatepickerDate(dpId, todayStr);
+    }
+
+    function clearDatepicker(dpId) {
+      const hiddenInput = document.getElementById(dpId).querySelector('input[type="hidden"]');
+      hiddenInput.value = '';
+      
+      const displaySpan = document.getElementById(dpId + '-display');
+      displaySpan.textContent = 'Select date';
+      displaySpan.classList.add('placeholder');
+      
+      const panel = document.getElementById(dpId + '-panel');
+      if (panel) panel.style.display = 'none';
+    }
+
+    function formatDateStringFriendly(dateStr) {
+      if (!dateStr) return 'Select date';
+      const parts = dateStr.split('-');
+      if (parts.length !== 3) return dateStr;
+      const y = parts[0];
+      const m = parseInt(parts[1], 10);
+      const d = parseInt(parts[2], 10);
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      return `${monthNames[m - 1]} ${d}, ${y}`;
+    }
+
+    function setDatepickerValue(dpId, dateStr) {
+      const hiddenInput = document.getElementById(dpId).querySelector('input[type="hidden"]');
+      if (hiddenInput) hiddenInput.value = dateStr || '';
+      
+      const displaySpan = document.getElementById(dpId + '-display');
+      if (displaySpan) {
+        if (dateStr) {
+          displaySpan.textContent = formatDateStringFriendly(dateStr);
+          displaySpan.classList.remove('placeholder');
+        } else {
+          displaySpan.textContent = 'Select date';
+          displaySpan.classList.add('placeholder');
+        }
+      }
+    }
+
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.crm-datepicker')) {
+        document.querySelectorAll('.crm-datepicker__panel').forEach(p => p.style.display = 'none');
+      }
+      if (!e.target.closest('.crm-select')) {
+        document.querySelectorAll('.crm-select__panel').forEach(p => p.style.display = 'none');
+      }
+    });
+
+    /* ====== CUSTOM THEMED SELECT ENGINE ====== */
+    function toggleCrmSelect(csId) {
+      const panel = document.getElementById(csId + '-panel');
+      if (!panel) return;
+      const isHidden = panel.style.display === 'none';
+      document.querySelectorAll('.crm-select__panel').forEach(p => p.style.display = 'none');
+      if (isHidden) panel.style.display = 'block';
+    }
+
+    function selectCrmSelectOption(csId, value, label) {
+      const hiddenInput = document.getElementById(csId).querySelector('input[type="hidden"]');
+      hiddenInput.value = value;
+
+      const displaySpan = document.getElementById(csId + '-display');
+      displaySpan.textContent = label;
+      displaySpan.classList.remove('placeholder');
+
+      const panel = document.getElementById(csId + '-panel');
+      if (panel) {
+        panel.querySelectorAll('.crm-select__option').forEach(opt => {
+          opt.classList.toggle('crm-select__option--selected', opt.textContent === label);
+        });
+        panel.style.display = 'none';
+      }
+    }
+
+    /* ====== BIRTHDAY MANUAL DD/MM/YYYY INPUT ====== */
+    function formatBirthdayInput(input) {
+      let digits = input.value.replace(/\D/g, '').slice(0, 8);
+      let formatted = digits;
+      if (digits.length > 4) {
+        formatted = digits.slice(0, 2) + '/' + digits.slice(2, 4) + '/' + digits.slice(4);
+      } else if (digits.length > 2) {
+        formatted = digits.slice(0, 2) + '/' + digits.slice(2);
+      }
+      input.value = formatted;
+    }
+
+    function uid(prefix) { return prefix + '_' + Math.random().toString(36).slice(2, 9); }
+    function now() { return Date.now(); }
+    function initialsOf(name) {
+      return (name || '').trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase() || '?';
+    }
+    function escapeHtml(str) {
+      const d = document.createElement('div');
+      d.textContent = str == null ? '' : String(str);
+      return d.innerHTML;
+    }
+    function setBtnLoading(id, loading) {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.classList.toggle('btn-loading', loading);
+      btn.disabled = !!loading;
+      btn.setAttribute('aria-busy', loading ? 'true' : 'false');
+    }
+
+    /* ============ USER-FRIENDLY ERROR HANDLING ============ */
+    function formatUserFriendlyError(err, fallback = 'An unexpected error occurred. Please try again.') {
+      if (!err) return fallback;
+      let msg = '';
+      if (typeof err === 'string') {
+        msg = err;
+      } else if (err && typeof err === 'object') {
+        msg = err.error || err.message || err.statusText || String(err);
+      }
+      if (!msg) return fallback;
+
+      msg = String(msg).replace(/^(TypeError|SyntaxError|ReferenceError|RangeError|Error|Failed to execute|Uncaught):\s*/i, '');
+
+      if (/fetch failed|failed to fetch|networkerror|network error|failed to connect|net::err|load failed/i.test(msg)) {
+        return 'Unable to connect to server. Please check your network connection or try again.';
+      }
+      if (/500|502|503|504|internal server error|bad gateway|service unavailable/i.test(msg)) {
+        return 'Server is temporarily unavailable. Please try again in a moment.';
+      }
+      if (/401|unauthorized|session expired|invalid token/i.test(msg)) {
+        return 'Your session has expired. Please sign in again.';
+      }
+      if (/403|forbidden|access denied/i.test(msg)) {
+        return 'You do not have permission to perform this action.';
+      }
+      if (/404|not found/i.test(msg)) {
+        return 'Requested resource was not found.';
+      }
+
+      msg = msg.split('\n')[0].trim();
+      if (!msg || msg === '[object Object]' || msg.length > 200) {
+        return fallback;
+      }
+      return msg.charAt(0).toUpperCase() + msg.slice(1);
+    }
+
+    /* ============ TOAST SYSTEM (Right Slide-In Notifications) ============ */
+    const _TOAST_ICONS = {
+      success: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+      error: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+      warning: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+      info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
+    };
+
+    function showToast(message, type = 'info', { duration = 4500, action } = {}) {
+      if (type === 'error' || message instanceof Error || (message && typeof message === 'object')) {
+        message = formatUserFriendlyError(message);
+      }
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext) {
+          const ctx = new AudioContext();
+          const osc1 = ctx.createOscillator();
+          const osc2 = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc1.type = 'sine';
+          osc2.type = 'triangle';
+          osc1.frequency.value = 1108.7;
+          osc2.frequency.value = 1661.2;
+          osc1.connect(gain);
+          osc2.connect(gain);
+          gain.connect(ctx.destination);
+          gain.gain.setValueAtTime(0, ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+          osc1.start(ctx.currentTime);
+          osc2.start(ctx.currentTime);
+          osc1.stop(ctx.currentTime + 0.5);
+          osc2.stop(ctx.currentTime + 0.5);
+        }
+      } catch (e) { }
+
+      let stack = document.getElementById('toast-stack');
+      if (!stack) {
+        stack = document.createElement('div');
+        stack.id = 'toast-stack';
+        stack.className = 'toast-stack';
+        document.body.appendChild(stack);
+      }
+
+      const el = document.createElement('div');
+      el.className = 'toast toast--' + (type || 'info');
+
+      const icon = _TOAST_ICONS[type] || _TOAST_ICONS.info;
+      el.innerHTML =
+        '<span class="toast__icon">' + icon + '</span>' +
+        '<div class="toast__body">' +
+        '<div class="toast__msg"></div>' +
+        (action ? '<button class="toast__action"></button>' : '') +
+        '</div>' +
+        '<button class="toast__close" aria-label="Dismiss">✕</button>' +
+        '<div class="toast__progress" style="width:100%"></div>';
+
+      el.querySelector('.toast__msg').textContent = message;
+      if (action) {
+        const ab = el.querySelector('.toast__action');
+        ab.textContent = action.label;
+        ab.onclick = () => { action.fn(); dismiss(); };
+      }
+
+      const bar = el.querySelector('.toast__progress');
+      let remaining = duration;
+      let startTime = null;
+      let rafId = null;
+      let paused = false;
+
+      function tick(ts) {
+        if (!startTime) startTime = ts;
+        if (!paused) {
+          remaining -= (ts - startTime);
+          startTime = ts;
+          const pct = Math.max(0, (remaining / duration) * 100);
+          bar.style.width = pct + '%';
+          if (remaining <= 0) { dismiss(); return; }
+        } else {
+          startTime = ts;
+        }
+        rafId = requestAnimationFrame(tick);
+      }
+
+      function dismiss() {
+        cancelAnimationFrame(rafId);
+        el.classList.add('toast--leaving');
+        el.addEventListener('animationend', () => el.remove(), { once: true });
+      }
+
+      el.addEventListener('mouseenter', () => { paused = true; });
+      el.addEventListener('mouseleave', () => { paused = false; });
+      el.querySelector('.toast__close').onclick = dismiss;
+
+      stack.appendChild(el);
+      rafId = requestAnimationFrame(tick);
+    }
+
+    function showFormError(errElementId, rawErr, fallback) {
+      const formatted = formatUserFriendlyError(rawErr, fallback);
+      showToast(formatted, 'error');
+      const errEl = document.getElementById(errElementId);
+      if (errEl) errEl.textContent = '';
+    }
+
+    /* ============ STATE ============ */
+    let db = null;
+    const EMPTY_DB = { team: [], clients: [], meetings: [], projects: [], activity: [], messages: [], chatGroups: [], notifications: [] };
+    let pendingMustChangePwUserId = null;
+    let pendingSessionToken = null;
+    let pendingUserId = null;
+    let pendingSecurityUserId = null;
+    let securityQuestionFailCount = 0;
+    const API_BASE = window.location.port === '8787' ? '' : 'http://localhost:8787';
+
+    function showStep(name) {
+      document.querySelectorAll('[data-step]').forEach(e => e.classList.toggle('is-active', e.dataset.step === name));
+    }
+
+    (async function init() {
+      runGreetingAnimation();
+      try {
+        const res = await fetch(API_BASE + '/api/auth/check');
+        const data = await res.json();
+        if (data.hasData) {
+          const userInput = document.getElementById('signin-user');
+          userInput.value = '';
+          userInput.onkeydown = e => { if (e.key === 'Enter') submitEmail(); };
+          document.getElementById('signin-email-step').style.display = 'block';
+          document.getElementById('signin-password-step').style.display = 'none';
+          showStep('signin');
+        } else {
+          db = structuredClone(EMPTY_DB);
+          showStep('setup');
+        }
+      } catch (e) {
+        console.error('Server check error:', e);
+        db = structuredClone(EMPTY_DB);
+        showStep('setup');
+      }
+    })();
+
+    /* ============ FIRESTORE SAVE (via server proxy) ============ */
+    async function saveDB() {
+      if (!db) return;
+      await fetch(API_BASE + '/api/db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-session-token': sessionStorage.getItem('crm-session-token') || '' },
+        body: JSON.stringify(db)
+      });
+    }
+
+    /* ============ AUTHENTICATION ============ */
+    function getMember(id) { return ((db && db.team) || []).find(m => m.id === id); }
+
+    async function submitFirstAdmin() {
+      const name = document.getElementById('setup-name').value.trim();
+      const email = document.getElementById('setup-email').value.trim();
+      const pw = document.getElementById('setup-password').value;
+      const pw2 = document.getElementById('setup-password2').value;
+      const err = document.getElementById('setup-error');
+      err.textContent = '';
+      if (!name || !email) { showFormError('setup-error', 'Name and email are required.'); return; }
+      if (!pw || pw.length < 4) { showFormError('setup-error', 'Password must be at least 4 characters.'); return; }
+      if (pw !== pw2) { showFormError('setup-error', 'Passwords do not match.'); return; }
+      const member = { id: uid('mem'), name, email, role: 'Admin', status: 'Active', avatar: 'avatar-1', initials: initialsOf(name), added: now(), password: pw, mustChangePassword: false, profileSetupRequired: true };
+      const initialDB = structuredClone(EMPTY_DB);
+      initialDB.team.push(member);
+      initialDB.activity.unshift({ id: uid('act'), actorId: member.id, text: 'created the workspace', time: now() });
+      setBtnLoading('btn-setup', true);
+      try {
+        const res = await fetch(API_BASE + '/api/auth/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(initialDB)
+        });
+        const data = await res.json();
+        if (!res.ok) { showFormError('setup-error', data.error, 'Setup failed.'); setBtnLoading('btn-setup', false); return; }
+        pendingSessionToken = data.token;
+        pendingUserId = data.userId;
+        // Mark profile setup as pending so a refresh doesn't skip to dashboard
+        localStorage.setItem('crm-profile-setup-pending', '1');
+        localStorage.setItem('crm-session-token', data.token);
+        localStorage.setItem('crm-current-user', data.userId);
+        document.getElementById('newprof-name').value = name;
+        showStep('profile-setup');
+        setBtnLoading('btn-setup', false);
+      } catch (e) { showFormError('setup-error', e, 'Could not reach server.'); setBtnLoading('btn-setup', false); }
+    }
+
+    function submitEmail() {
+      const emailInput = document.getElementById('signin-user');
+      const err = document.getElementById('signin-error');
+      const email = emailInput.value.trim();
+      err.textContent = '';
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!email) { showFormError('signin-error', 'Please enter your email address.'); return; }
+      if (!emailRegex.test(email)) { showFormError('signin-error', 'Please enter a valid email address.'); return; }
+      document.getElementById('signin-email-display').textContent = email;
+      document.getElementById('signin-email-step').style.display = 'none';
+      document.getElementById('signin-password-step').style.display = 'block';
+      document.getElementById('signin-password').value = '';
+      document.getElementById('signin-pw-error').textContent = '';
+      setTimeout(() => document.getElementById('signin-password').focus(), 50);
+    }
+
+    function changeEmail(e) {
+      e.preventDefault();
+      document.getElementById('signin-password-step').style.display = 'none';
+      document.getElementById('signin-email-step').style.display = 'block';
+      document.getElementById('signin-pw-error').textContent = '';
+      setTimeout(() => document.getElementById('signin-user').focus(), 50);
+    }
+
+    async function submitSignIn() {
+      const email = document.getElementById('signin-user').value.trim();
+      const pwInput = document.getElementById('signin-password');
+      const err = document.getElementById('signin-pw-error');
+      err.textContent = '';
+      if (!email || !pwInput) return;
+      setBtnLoading('btn-signin', true);
+      try {
+        const res = await fetch(API_BASE + '/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: email, password: pwInput.value })
+        });
+        const data = await res.json();
+        if (!res.ok) { showFormError('signin-pw-error', data.error, 'Login failed.'); setBtnLoading('btn-signin', false); return; }
+        if (data.mustChangePassword) {
+          pendingMustChangePwUserId = data.userId;
+          document.getElementById('newpw-1').value = '';
+          document.getElementById('newpw-2').value = '';
+          document.getElementById('newpw-error').textContent = '';
+          showStep('newpw');
+          setBtnLoading('btn-signin', false);
+          return;
+        }
+        if (data.securityQuestionRequired) {
+          pendingSecurityUserId = data.userId;
+          securityQuestionFailCount = 0;
+          // Reset the challenge dropdown and answer
+          document.getElementById('challenge-security-question').value = '';
+          document.getElementById('cs-challenge-question-display').textContent = 'Select your security question';
+          document.getElementById('cs-challenge-question-display').classList.add('placeholder');
+          document.getElementById('challenge-security-answer').value = '';
+          document.getElementById('challenge-error').textContent = '';
+          showStep('security-challenge');
+          setBtnLoading('btn-signin', false);
+          return;
+        }
+        if (data.profileSetupRequired) {
+          pendingSessionToken = data.token;
+          pendingUserId = data.userId;
+          // Mark profile setup as pending so a refresh doesn't skip to dashboard
+          localStorage.setItem('crm-profile-setup-pending', '1');
+          localStorage.setItem('crm-session-token', data.token);
+          localStorage.setItem('crm-current-user', data.userId);
+          if (data.user && data.user.name) {
+            document.getElementById('newprof-name').value = data.user.name;
+          }
+          showStep('profile-setup');
+          setBtnLoading('btn-signin', false);
+          return;
+        }
+        enterApp(data.userId, data.token);
+      } catch (e) { showFormError('signin-pw-error', e, 'Could not reach server.'); setBtnLoading('btn-signin', false); }
+    }
+
+    async function submitForcedPasswordChange() {
+      const pw = document.getElementById('newpw-1').value;
+      const pw2 = document.getElementById('newpw-2').value;
+      const err = document.getElementById('newpw-error');
+      err.textContent = '';
+      if (!pw || pw.length < 8) { showFormError('newpw-error', 'Password must be at least 8 characters.'); return; }
+      if (pw === '0000') { showFormError('newpw-error', 'Choose something other than the default.'); return; }
+      if (pw !== pw2) { showFormError('newpw-error', 'Passwords do not match.'); return; }
+      setBtnLoading('btn-newpw', true);
+      try {
+        const res = await fetch(API_BASE + '/api/auth/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: pendingMustChangePwUserId, newPassword: pw })
+        });
+        const data = await res.json();
+        if (!res.ok) { showFormError('newpw-error', data.error, 'Could not update password.'); setBtnLoading('btn-newpw', false); return; }
+
+        // Store session info for profile step
+        pendingSessionToken = data.token;
+        pendingUserId = data.userId;
+
+        if (data.profileSetupRequired) {
+          // Pre-fill name from server-returned user if available
+          if (data.user && data.user.name) {
+            document.getElementById('newprof-name').value = data.user.name;
+          }
+          showStep('profile-setup');
+          setBtnLoading('btn-newpw', false);
+        } else {
+          setBtnLoading('btn-newpw', false);
+          enterApp(data.userId, data.token);
+        }
+      } catch (e) { showFormError('newpw-error', e, 'Could not reach server.'); setBtnLoading('btn-newpw', false); }
+    }
+
+    function handleSetupPhotoChange(input) {
+      if (!input.files || !input.files[0]) return;
+      const file = input.files[0];
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          const targetSize = 512; // 512x512 high-DPI resolution for crisp rendering
+          canvas.width = targetSize;
+          canvas.height = targetSize;
+
+          // Calculate center crop (1:1 aspect ratio)
+          const minDim = Math.min(img.width, img.height);
+          const sx = (img.width - minDim) / 2;
+          const sy = (img.height - minDim) / 2;
+
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, targetSize, targetSize);
+
+          const crispDataUrl = canvas.toDataURL('image/png');
+          const imgEl = document.getElementById('setup-photo-img');
+          const initialsEl = document.getElementById('setup-photo-initials');
+          imgEl.src = crispDataUrl;
+          imgEl.style.display = 'block';
+          imgEl.style.objectFit = 'cover';
+          imgEl.style.borderRadius = '50%';
+          if (initialsEl) initialsEl.style.display = 'none';
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function updateSetupInitials(name) {
+      const initialsEl = document.getElementById('setup-photo-initials');
+      const imgEl = document.getElementById('setup-photo-img');
+      if (imgEl && imgEl.style.display !== 'none' && imgEl.src) return; // Photo already set
+      if (initialsEl) {
+        const parts = name.trim().split(/\s+/);
+        const initials = parts.slice(0, 2).map(p => p[0] || '').join('').toUpperCase();
+        initialsEl.textContent = initials || '?';
+      }
+    }
+
+    async function submitProfileSetup() {
+      const name = document.getElementById('newprof-name').value.trim();
+      const birthday = document.getElementById('newprof-birthday').value.trim();
+      const sex = document.getElementById('newprof-gender').value;
+      const personalEmail = document.getElementById('newprof-pemail').value.trim();
+      const mobileNumber = document.getElementById('newprof-mobile').value.trim();
+      const err = document.getElementById('newprof-error');
+      err.textContent = '';
+
+      const photoInput = document.getElementById('setup-photo-input');
+      const photoImg = document.getElementById('setup-photo-img');
+      const hasPhoto = photoImg && photoImg.src && photoImg.style.display !== 'none';
+
+      const securityQuestion = document.getElementById('newprof-security-question').value;
+      const securityAnswer = document.getElementById('newprof-security-answer').value.trim();
+
+      if (!hasPhoto) { showFormError('newprof-error', 'Please upload a profile photo.'); return; }
+      if (!name) { showFormError('newprof-error', 'Full name is required.'); return; }
+      if (!/^\d{2}\/\d{2}\/\d{4}$/.test(birthday)) { showFormError('newprof-error', 'Please enter your birthday as DD/MM/YYYY.'); return; }
+      if (!sex) { showFormError('newprof-error', 'Please select your gender.'); return; }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!personalEmail || !emailRegex.test(personalEmail)) { showFormError('newprof-error', 'Please enter a valid personal email.'); return; }
+      if (!mobileNumber) { showFormError('newprof-error', 'Contact info / mobile is required.'); return; }
+      if (!securityQuestion) { showFormError('newprof-error', 'Please select a security question.'); return; }
+      if (!securityAnswer || securityAnswer.length < 2) { showFormError('newprof-error', 'Please provide a security answer (minimum 2 characters).'); return; }
+
+      const photoDataUrl = photoImg ? photoImg.src : '';
+
+      setBtnLoading('btn-newprof', true);
+      try {
+        const res = await fetch(API_BASE + '/api/profile', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-session-token': pendingSessionToken
+          },
+          body: JSON.stringify({ name, birthday, sex, personalEmail, mobileNumber, photoDataUrl, securityQuestion, securityAnswer })
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          showFormError('newprof-error', d.error, 'Failed to save profile. Please try again.');
+          setBtnLoading('btn-newprof', false);
+          return;
+        }
+        // Profile saved successfully — clear the pending flag
+        localStorage.removeItem('crm-profile-setup-pending');
+      } catch (e) {
+        showFormError('newprof-error', e, 'Could not reach server.');
+        setBtnLoading('btn-newprof', false);
+        return;
+      }
+      enterApp(pendingUserId, pendingSessionToken);
+    }
+
+    async function submitSecurityChallenge() {
+      const questionInput = document.getElementById('challenge-security-question');
+      const answerInput = document.getElementById('challenge-security-answer');
+      const err = document.getElementById('challenge-error');
+      err.textContent = '';
+      if (!questionInput || !answerInput) return;
+      const question = questionInput.value;
+      const answer = answerInput.value.trim();
+      if (!question) { showFormError('challenge-error', 'Please select your security question.'); return; }
+      if (!answer) { showFormError('challenge-error', 'Please enter your answer.'); return; }
+
+      setBtnLoading('btn-challenge', true);
+      try {
+        const res = await fetch(API_BASE + '/api/auth/verify-security-question', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: pendingSecurityUserId, securityQuestion: question, securityAnswer: answer })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          securityQuestionFailCount++;
+          if (securityQuestionFailCount >= 5 || res.status === 429) {
+            const modal = document.getElementById('lockout-modal');
+            if (modal) modal.classList.remove('hidden');
+            setBtnLoading('btn-challenge', false);
+            setTimeout(() => {
+              if (modal) modal.classList.add('hidden');
+              showStep('signin');
+              const signinPwInput = document.getElementById('signin-password');
+              if (signinPwInput) signinPwInput.value = '';
+            }, 3000);
+            return;
+          }
+          showFormError('challenge-error', data.error, 'Verification failed.');
+          setBtnLoading('btn-challenge', false);
+          return;
+        }
+        setBtnLoading('btn-challenge', false);
+        enterApp(data.userId, data.token);
+      } catch (e) {
+        showFormError('challenge-error', e, 'Could not reach server.');
+        setBtnLoading('btn-challenge', false);
+      }
+    }
+
+    function enterApp(userId, token) {
+      // Always clear the profile setup pending flag on successful login
+      localStorage.removeItem('crm-profile-setup-pending');
+      sessionStorage.setItem('crm-current-user', userId);
+      sessionStorage.setItem('crm-session-token', token);
+      localStorage.setItem('crm-current-user', userId);
+      localStorage.setItem('crm-session-token', token);
+      window.location.replace('dashboard.html');
+    }
+  </script>
+
+  <div id="privacy-notice-dialog" style="display: none; position: fixed; bottom: 30px; right: 30px; width: 100%; max-width: 480px; background: #ffffff; border-radius: 24px; padding: 32px; z-index: 99999; box-shadow: 0 12px 48px rgba(0,0,0,0.15); font-family: 'Inter', sans-serif;">
+    <h3 style="margin: 0 0 16px 0; color: #839ba3; font-size: 24px; font-weight: 700;">About your Privacy</h3>
+    <p style="margin: 0 0 24px 0; color: #99afb8; font-size: 14px; line-height: 1.6; font-weight: 500;">
+      We use essential cookies to ensure you get the best and most secure experience. These are not used for advertising or tracking. You may accept or decline these operations. To learn more, visit our <a href="#" style="color: #a8cbd9; text-decoration: underline;">privacy policy.</a>
+    </p>
+    <div style="display: flex; gap: 12px; justify-content: flex-end;">
+      <button onclick="declineCookies()" style="padding: 12px 24px; border-radius: 30px; border: 2px solid #123340; background: transparent; color: #123340; font-weight: 700; font-size: 14px; cursor: pointer; white-space: nowrap; transition: 0.2s;">Decline</button>
+      <button onclick="acceptCookies()" style="padding: 12px 24px; border-radius: 30px; border: none; background: #2b86a8; color: #fff; font-weight: 700; font-size: 14px; cursor: pointer; white-space: nowrap; transition: 0.2s; box-shadow: 0 4px 12px rgba(43,134,168,0.3);">Accept</button>
+    </div>
+  </div>
+  <script>
+    function checkCookieConsent() {
+      if (!localStorage.getItem('crm-cookie-consent')) {
+        document.getElementById('privacy-notice-dialog').style.display = 'block';
+      }
+    }
+    function acceptCookies() {
+      localStorage.setItem('crm-cookie-consent', 'true');
+      document.getElementById('privacy-notice-dialog').style.display = 'none';
+    }
+    function declineCookies() {
+      localStorage.setItem('crm-cookie-consent', 'declined');
+      document.getElementById('privacy-notice-dialog').style.display = 'none';
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      checkCookieConsent();
+      // Restore profile setup state after a page refresh
+      const profilePending = localStorage.getItem('crm-profile-setup-pending');
+      const savedToken = localStorage.getItem('crm-session-token');
+      const savedUserId = localStorage.getItem('crm-current-user');
+      if (profilePending && savedToken && savedUserId) {
+        pendingSessionToken = savedToken;
+        pendingUserId = savedUserId;
+        showStep('profile-setup');
+      }
+    });
+  </script>
+
+</body>
+
+</html>
