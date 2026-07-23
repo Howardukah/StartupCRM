@@ -1565,10 +1565,10 @@ async function checkBirthdayAutoMails() {
     const currentDate = String(now.getDate()).padStart(2, '0');
     const currentYear = now.getFullYear();
 
-    const appUrl = process.env.APP_URL || 'http://localhost:8787';
+    const appUrl = process.env.APP_URL || 'https://crm.startupbuild.tech';
     const brandName = process.env.SMTP_FROM_NAME || 'Startup CRM';
     const supportEmail = process.env.SUPPORT_EMAIL || 'support@startupbuild.tech';
-    const loginUrl = appUrl.replace(/\/$/, '') + '/index.html';
+    const loginUrl = appUrl.replace(/\/$/, '') + '/';
 
     // Built-in birthday email template — always active, no admin setup required.
     // Customize the HTML below to change the birthday email design.
@@ -1668,8 +1668,8 @@ app.post('/api/send-invite-email', validateSession, async (req, res) => {
       return res.json({ ok: true, skipped: true, reason: 'SMTP not configured.' });
     }
 
-    const appUrl = process.env.APP_URL || 'http://localhost:8787';
-    const loginUrl = appUrl.replace(/\/$/, '') + '/index.html';
+    const appUrl = process.env.APP_URL || 'https://crm.startupbuild.tech';
+    const loginUrl = appUrl.replace(/\/$/, '') + '/';
     const fromName = process.env.SMTP_FROM_NAME || 'Startup CRM';
     const fromAddr = process.env.SMTP_USER;
     const supportEmail = process.env.SUPPORT_EMAIL || 'support@startupbuild.tech';
