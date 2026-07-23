@@ -369,9 +369,9 @@ function sanitizeMetadata(obj) {
 function revokeSessionsForUsers(userIds) {
   const blocked = new Set((userIds || []).filter(Boolean));
   if (!blocked.size) return;
-  for (const [token, session] of sessions) {
-    if (blocked.has(session.userId)) sessions.delete(token);
-  }
+  for (const id of blocked) revokedUserIds.add(id);
+  // Auto-purge revocations after 25h (tokens expire in 24h anyway)
+  setTimeout(() => { for (const id of blocked) revokedUserIds.delete(id); }, 25 * 60 * 60 * 1000);
 }
 
 function sessionUserIdsToRevokeAfterTeamChange(currentTeam, nextTeam) {
@@ -497,10 +497,44 @@ async function initSupabase() {
   console.log('✅ Successfully connected to Supabase.');
 }
 
-/* ── In-memory session store (24h TTL) ───────────────────────────────── */
-const sessions = new Map();
+/* ── Signed session tokens (survive server restarts) ─────────────────────
+   Format: base64url(userId.expiresAt.profileSetupRequired).HMAC-SHA256
+   The HMAC is signed with SESSION_SECRET so tokens can't be forged.
+   A small in-memory revocation set handles forced logouts (suspended users,
+   password changes). Revocations are kept for 25h then auto-purged.
+─────────────────────────────────────────────────────────────────────────── */
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomUUID(); // set SESSION_SECRET env var on Render!
+const revokedUserIds = new Set(); // revoked by userId (survives for 25h)
 
-// Secure WebSocket connections using the session store or bucket token
+function signToken(userId, expiresAt, profileSetupRequired = false) {
+  const payload = Buffer.from(JSON.stringify({ userId, expiresAt, profileSetupRequired })).toString('base64url');
+  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+  return `${payload}.${sig}`;
+}
+
+function verifyToken(token) {
+  if (!token || typeof token !== 'string') return null;
+  const dot = token.lastIndexOf('.');
+  if (dot < 0) return null;
+  const payload = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const expected = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+  // Constant-time comparison
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    if (!data.userId || !data.expiresAt) return null;
+    if (Date.now() > data.expiresAt) return null;
+    return data;
+  } catch { return null; }
+}
+
+// Keep a small in-memory sessions Map ONLY for real-time revocation lookups
+// (so we can still forcibly log out suspended users or password-changed users).
+// No longer the source of truth — verifyToken() is.
+const sessions = new Map(); // token → { userId } kept only for revokeByToken if needed
+
+// Secure WebSocket connections using the signed token or bucket token
 io.use(async (socket, next) => {
   const authType = socket.handshake.auth.type || 'crm';
   const token = socket.handshake.auth.token || socket.handshake.query.token;
@@ -514,8 +548,9 @@ io.use(async (socket, next) => {
     return next();
   }
 
-  const session = sessions.get(token);
-  if (!session || session.expires < Date.now()) return next(new Error('Session expired'));
+  const session = verifyToken(token);
+  if (!session) return next(new Error('Session expired'));
+  if (revokedUserIds.has(session.userId)) return next(new Error('Session revoked'));
   socket.data.userId = session.userId;
   next();
 });
@@ -531,42 +566,46 @@ io.on('connection', (socket) => {
 });
 
 // Cache TTL for suspended-user checks: re-verify against Supabase at most once per 5 minutes.
-// This eliminates the extra getCrmData() read on every authenticated request.
 const SESSION_VERIFY_INTERVAL_MS = 5 * 60 * 1000;
+const sessionLastVerified = new Map(); // userId → timestamp
 
-// Security: prune expired sessions and stale login-attempt records every 10 min
-// to prevent unbounded memory growth.
+// Prune stale loginAttempt records every 10 min
 setInterval(() => {
   const now = Date.now();
-  for (const [token, s] of sessions) {
-    if (s.expires < now) sessions.delete(token);
-  }
   for (const [key, a] of loginAttempts) {
-    // Remove entries whose lockout window has fully elapsed
     if (now - a.first > LOCKOUT_MS * 2) loginAttempts.delete(key);
+  }
+  // Prune old lastVerified entries
+  for (const [uid, ts] of sessionLastVerified) {
+    if (now - ts > SESSION_VERIFY_INTERVAL_MS * 3) sessionLastVerified.delete(uid);
   }
 }, 10 * 60 * 1000);
 
 async function validateSession(req, res, next) {
   const token = req.headers['x-session-token'];
   if (!token) return res.status(401).json({ error: 'Unauthorized.', redirect: true });
-  const session = sessions.get(token);
-  if (!session || session.expires < Date.now()) {
-    sessions.delete(token);
+
+  const session = verifyToken(token);
+  if (!session) {
     return res.status(401).json({ error: 'Session expired. Please log in again.', redirect: true });
   }
 
-  // Only re-verify suspension status if the cached check has expired.
+  if (revokedUserIds.has(session.userId)) {
+    return res.status(401).json({ error: 'Session revoked. Please log in again.', redirect: true });
+  }
+
+  // Only re-verify suspension status once per 5 min per user
   const now = Date.now();
-  if (!session.lastVerified || (now - session.lastVerified) > SESSION_VERIFY_INTERVAL_MS) {
+  const lastVerified = sessionLastVerified.get(session.userId) || 0;
+  if (now - lastVerified > SESSION_VERIFY_INTERVAL_MS) {
     try {
       const data = await getCrmData();
       const member = (data.team || []).find(m => m.id === session.userId);
       if (!member || member.status === 'Suspended') {
-        sessions.delete(token);
+        revokedUserIds.add(session.userId);
         return res.status(403).json({ error: 'Your account is suspended or no longer exists.', redirect: true });
       }
-      session.lastVerified = now;
+      sessionLastVerified.set(session.userId, now);
     } catch (err) {
       console.error('validateSession error:', err);
     }
@@ -631,8 +670,7 @@ app.post('/api/auth/setup', async (req, res) => {
       adminMember.lastLoginIp = requestIp(req);
     }
     await setCrmData(req.body);
-    const token = crypto.randomUUID();
-    sessions.set(token, { userId: adminMember.id, expires: Date.now() + 86400000, profileSetupRequired: true });
+    const token = signToken(adminMember.id, Date.now() + 86400000, true);
     res.json({ ok: true, token, userId: adminMember.id, profileSetupRequired: true });
   } catch (e) {
     console.error(e);
@@ -760,9 +798,8 @@ app.post('/api/auth/login', async (req, res) => {
     if (member.mustChangePassword) {
       return res.json({ ok: true, mustChangePassword: true, userId: member.id });
     }
-    const token = crypto.randomUUID();
     const isProfileSetupNeeded = !!member.profileSetupRequired;
-    sessions.set(token, { userId: member.id, expires: Date.now() + 86400000, profileSetupRequired: isProfileSetupNeeded });
+    const token = signToken(member.id, Date.now() + 86400000, isProfileSetupNeeded);
     await appendActivity(makeActivityEntry(req, {
       actorId: member.id,
       actorName: member.name || member.email || member.id,
@@ -843,8 +880,7 @@ app.post('/api/auth/verify-security-question', async (req, res) => {
 
     loginAttempts.delete(key);
 
-    const token = crypto.randomUUID();
-    sessions.set(token, { userId: member.id, expires: Date.now() + 86400000 });
+    const token = signToken(member.id, Date.now() + 86400000);
 
     await appendActivity(makeActivityEntry(req, {
       actorId: member.id,
@@ -881,8 +917,8 @@ app.post('/api/auth/change-password', async (req, res) => {
     // Allow if caller has a valid session for THIS user, or if it's a
     // first-login forced-change (mustChangePassword=true, no session yet).
     const sessionToken = req.headers['x-session-token'];
-    const existingSession = sessionToken ? sessions.get(sessionToken) : null;
-    const sessionOwnsUser = existingSession && existingSession.expires > Date.now() && existingSession.userId === userId;
+    const existingSession = sessionToken ? verifyToken(sessionToken) : null;
+    const sessionOwnsUser = existingSession && !revokedUserIds.has(existingSession.userId) && existingSession.userId === userId;
 
     const data = await getCrmData();
     const memberIndex = (data.team || []).findIndex(m => m.id === userId);
@@ -906,9 +942,8 @@ app.post('/api/auth/change-password', async (req, res) => {
       data.team[memberIndex].status = 'Active';
     }
     await setCrmData(data);
-    const token = crypto.randomUUID();
     const isProfileSetupNeeded = !!data.team[memberIndex].profileSetupRequired;
-    sessions.set(token, { userId, expires: Date.now() + 86400000, profileSetupRequired: isProfileSetupNeeded });
+    const token = signToken(userId, Date.now() + 86400000, isProfileSetupNeeded);
     appendActivity(makeActivityEntry(req, {
       actorId: userId,
       actorName: member.name || member.email || userId,
