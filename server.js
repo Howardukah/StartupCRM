@@ -47,6 +47,7 @@ const globalLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
   message: { error: 'Too many requests, please slow down.' },
 });
 app.use('/api/', globalLimiter);
@@ -57,6 +58,7 @@ const authLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
   message: { error: 'Too many auth requests, please try again later.' },
 });
 app.use('/api/auth/', authLimiter);
@@ -1524,11 +1526,12 @@ let _mailer = null;
 function getMailer() {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
-  const port = parseInt(SMTP_PORT || '465', 10);
+  const port = parseInt(SMTP_PORT || '587', 10);
+  const isSecure = port === 465;
   return nodemailer.createTransport({
     host: SMTP_HOST,
     port,
-    secure: port === 465,
+    secure: isSecure,
     auth: { user: SMTP_USER, pass: SMTP_PASS },
     tls: { rejectUnauthorized: false }
   });
