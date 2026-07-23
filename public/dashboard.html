@@ -117,7 +117,19 @@
       background: var(--bg);
       font-size: 13.5px;
       line-height: 1.45;
-      -webkit-font-smoothing: antialiased
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+    }
+
+    /* ── Max-width centering shell ─────────────────────────────────────
+       On screens wider than 1440px the app is centered and capped so it
+       looks identical to a smaller screen. The body background still
+       fills the full viewport on either side.
+    ──────────────────────────────────────────────────────────────────── */
+    .app-viewport {
+      max-width: 1600px;
+      margin: 0 auto;
+      position: relative;
     }
 
     a {
@@ -254,7 +266,7 @@
     .app {
       display: grid;
       grid-template-columns: 240px 1fr;
-      min-height: 100vh
+      min-height: 100vh;
     }
 
     .sidebar {
@@ -9355,7 +9367,8 @@
     </div>
   </div>
 
-  <section data-view-page="app" class="app-shell app">
+  <div class="app-viewport">
+    <section data-view-page="app" class="app-shell app">
     <div class="sidebar-backdrop" id="sb-backdrop" onclick="toggleSidebar(false)"></div>
     <aside class="sidebar" id="sidebar">
       <div class="sidebar__brand">
@@ -10140,6 +10153,7 @@
       </div>
     </div>
   </section>
+  </div>
 
   <!-- Deadline Alert Modal -->
   <div class="modal" id="modal-deadline-alert">
