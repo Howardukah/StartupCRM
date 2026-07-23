@@ -1538,51 +1538,138 @@ function getMailer() {
   });
 }
 
-async function sendMailWithFallback(mailOptions) {
-  const primaryMailer = getMailer();
-  if (!primaryMailer) throw new Error('SMTP not configured.');
-
+async function sendViaResendApi(mailOptions) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return false;
   try {
-    return await primaryMailer.sendMail(mailOptions);
-  } catch (err) {
-    console.warn(`⚠️ Primary SMTP failed (${err.code || err.message}). Attempting automatic fallback...`);
-    const host = process.env.SMTP_HOST || '';
-    const user = process.env.SMTP_USER || '';
-    const pass = process.env.SMTP_PASS || '';
-    const port = parseInt(process.env.SMTP_PORT || '587', 10);
-
-    const fallbacks = [
-      { host, port: port === 465 ? 587 : 465, secure: port !== 465 }
-    ];
-
-    if (host.includes('zoho') || user.includes('zoho') || user.includes('@startupbuild')) {
-      const altHosts = ['smtppro.zoho.com', 'smtp.zoho.com', 'smtppro.zoho.in', 'smtp.zoho.in'].filter(h => h !== host);
-      altHosts.forEach(h => {
-        fallbacks.push({ host: h, port: 587, secure: false });
-        fallbacks.push({ host: h, port: 465, secure: true });
-      });
+    const fromAddr = process.env.SMTP_USER || 'onboarding@resend.dev';
+    const fromName = process.env.SMTP_FROM_NAME || 'Startup CRM';
+    const rawTo = String(mailOptions.to).replace(/^.*<|>/g, '').trim();
+    const from = fromAddr.includes('resend.dev') ? `${fromName} <onboarding@resend.dev>` : `${fromName} <${fromAddr}>`;
+    
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from,
+        to: [rawTo],
+        subject: mailOptions.subject,
+        html: mailOptions.html
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      console.log('✅ Email successfully delivered via Resend HTTPS API! ID:', data.id);
+      return true;
     }
+    console.warn('⚠️ Resend HTTPS API returned error:', data);
+  } catch (e) {
+    console.warn('⚠️ Resend HTTPS API fetch failed:', e.message);
+  }
+  return false;
+}
 
-    for (const fb of fallbacks) {
-      try {
-        console.log(`🔄 Retrying email send via ${fb.host}:${fb.port}...`);
-        const fbTransporter = nodemailer.createTransport({
-          host: fb.host,
-          port: fb.port,
-          secure: fb.secure,
-          auth: { user, pass },
-          tls: { rejectUnauthorized: false },
-          connectionTimeout: 12000
+async function sendViaBrevoApi(mailOptions) {
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) return false;
+  try {
+    const fromAddr = process.env.SMTP_USER || 'noreply@startupbuild.tech';
+    const fromName = process.env.SMTP_FROM_NAME || 'Startup CRM';
+    const rawTo = String(mailOptions.to).replace(/^.*<|>/g, '').trim();
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': apiKey,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        sender: { name: fromName, email: fromAddr },
+        to: [{ email: rawTo }],
+        subject: mailOptions.subject,
+        htmlContent: mailOptions.html
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      console.log('✅ Email successfully delivered via Brevo HTTPS API! MessageId:', data.messageId);
+      return true;
+    }
+    console.warn('⚠️ Brevo HTTPS API returned error:', data);
+  } catch (e) {
+    console.warn('⚠️ Brevo HTTPS API fetch failed:', e.message);
+  }
+  return false;
+}
+
+async function sendMailWithFallback(mailOptions) {
+  // 1. Try Resend or Brevo HTTPS API if configured (100% reliable on Render, bypasses port blocks)
+  if (process.env.RESEND_API_KEY) {
+    const sent = await sendViaResendApi(mailOptions);
+    if (sent) return { ok: true, provider: 'resend' };
+  }
+  if (process.env.BREVO_API_KEY) {
+    const sent = await sendViaBrevoApi(mailOptions);
+    if (sent) return { ok: true, provider: 'brevo' };
+  }
+
+  // 2. Try primary SMTP transporter
+  const primaryMailer = getMailer();
+  if (!primaryMailer && !process.env.RESEND_API_KEY && !process.env.BREVO_API_KEY) {
+    throw new Error('No mail transport configured. Please set RESEND_API_KEY or SMTP settings.');
+  }
+
+  if (primaryMailer) {
+    try {
+      return await primaryMailer.sendMail(mailOptions);
+    } catch (err) {
+      console.warn(`⚠️ Primary SMTP failed (${err.code || err.message}). Attempting automatic fallbacks...`);
+      
+      // Try Resend/Brevo API as secondary fallback if set
+      if (process.env.RESEND_API_KEY && await sendViaResendApi(mailOptions)) return { ok: true, provider: 'resend-fallback' };
+      if (process.env.BREVO_API_KEY && await sendViaBrevoApi(mailOptions)) return { ok: true, provider: 'brevo-fallback' };
+
+      const host = process.env.SMTP_HOST || '';
+      const user = process.env.SMTP_USER || '';
+      const pass = process.env.SMTP_PASS || '';
+      const port = parseInt(process.env.SMTP_PORT || '587', 10);
+
+      const fallbacks = [
+        { host, port: port === 465 ? 587 : 465, secure: port !== 465 }
+      ];
+
+      if (host.includes('zoho') || user.includes('zoho') || user.includes('@startupbuild')) {
+        const altHosts = ['smtppro.zoho.com', 'smtp.zoho.com', 'smtppro.zoho.in', 'smtp.zoho.in'].filter(h => h !== host);
+        altHosts.forEach(h => {
+          fallbacks.push({ host: h, port: 587, secure: false });
+          fallbacks.push({ host: h, port: 465, secure: true });
         });
-        const result = await fbTransporter.sendMail(mailOptions);
-        console.log(`✅ Email successfully sent via fallback (${fb.host}:${fb.port})!`);
-        return result;
-      } catch (fbErr) {
-        console.warn(`❌ Fallback ${fb.host}:${fb.port} failed:`, fbErr.message);
       }
-    }
 
-    throw err;
+      for (const fb of fallbacks) {
+        try {
+          console.log(`🔄 Retrying email send via ${fb.host}:${fb.port}...`);
+          const fbTransporter = nodemailer.createTransport({
+            host: fb.host,
+            port: fb.port,
+            secure: fb.secure,
+            auth: { user, pass },
+            tls: { rejectUnauthorized: false },
+            connectionTimeout: 8000
+          });
+          const result = await fbTransporter.sendMail(mailOptions);
+          console.log(`✅ Email successfully sent via fallback (${fb.host}:${fb.port})!`);
+          return result;
+        } catch (fbErr) {
+          console.warn(`❌ Fallback ${fb.host}:${fb.port} failed:`, fbErr.message);
+        }
+      }
+
+      throw err;
+    }
   }
 }
 
