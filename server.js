@@ -503,7 +503,7 @@ async function initSupabase() {
    A small in-memory revocation set handles forced logouts (suspended users,
    password changes). Revocations are kept for 25h then auto-purged.
 ─────────────────────────────────────────────────────────────────────────── */
-const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomUUID(); // set SESSION_SECRET env var on Render!
+const SESSION_SECRET = process.env.SESSION_SECRET || process.env.ENCRYPTION_KEY || process.env.SUPABASE_SERVICE_KEY || 'crm_stable_session_secret_2026';
 const revokedUserIds = new Set(); // revoked by userId (survives for 25h)
 
 function signToken(userId, expiresAt, profileSetupRequired = false) {
