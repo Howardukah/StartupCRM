@@ -708,9 +708,11 @@ app.post('/api/auth/login', async (req, res) => {
     if (member.status === 'Suspended') {
       return res.status(403).json({ error: 'Credentials restricted. Contact admin.' });
     }
-    const passwordOk = member.password && BCRYPT_PREFIX.test(member.password)
+    const isHashed = member.password && BCRYPT_PREFIX.test(member.password);
+    const passwordOk = isHashed
       ? await bcrypt.compare(password || '', member.password)
-      : false;
+      : (member.password && String(password) === String(member.password));
+
     if (!passwordOk) {
       fail();
       const currentAttempt = loginAttempts.get(key);
@@ -719,6 +721,12 @@ app.post('/api/auth/login', async (req, res) => {
         await setCrmData(data);
       }
       return res.status(401).json({ error: 'Incorrect password.' });
+    }
+
+    // Auto-hash plaintext password if needed
+    if (!isHashed) {
+      member.password = await bcrypt.hash(String(password), 10);
+      await setCrmData(data);
     }
     const currentIp = requestIp(req);
     let ipMismatched = false;
