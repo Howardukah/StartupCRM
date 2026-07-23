@@ -11079,6 +11079,91 @@
       localStorage.removeItem('crm-session-token');
       window.location.href = '/';
     }
+
+    /* ============ 30-MINUTE INACTIVITY AUTO-LOGOUT ============ */
+    let _inactivityTimer = null;
+    let lastActivity = Date.now();
+    let warningShown = false;
+
+    function playInactivityChime() {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc1.type = 'sine';
+        osc2.type = 'sine';
+        osc1.frequency.value = 587.33; // D5
+        osc2.frequency.value = 880.00; // A5
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+        osc1.start(ctx.currentTime);
+        osc2.start(ctx.currentTime + 0.15);
+        osc1.stop(ctx.currentTime + 0.6);
+        osc2.stop(ctx.currentTime + 0.6);
+      } catch (e) { }
+    }
+
+    function startInactivityWatcher() {
+      const maxIdleMs = 30 * 60 * 1000;       // 30 minutes
+      const warningStartMs = 25 * 60 * 1000;  // 25 minutes
+      lastActivity = Date.now();
+      warningShown = false;
+
+      const resetActivity = () => {
+        lastActivity = Date.now();
+        if (warningShown) {
+          warningShown = false;
+          if (typeof showToast === 'function') {
+            showToast('Session active. Idle logout reset.', 'info', { duration: 3000 });
+          }
+        }
+      };
+
+      ['mousemove', 'keydown', 'click', 'scroll'].forEach(evt => {
+        window.addEventListener(evt, resetActivity, { passive: true });
+      });
+
+      if (_inactivityTimer) clearInterval(_inactivityTimer);
+
+      _inactivityTimer = setInterval(() => {
+        const idleTime = Date.now() - lastActivity;
+
+        if (idleTime >= warningStartMs && idleTime < maxIdleMs && !warningShown) {
+          warningShown = true;
+          if (typeof showToast === 'function') {
+            showToast('You will be logged out in 5 minutes due to inactivity.', 'warning', { duration: 8000 });
+          }
+          playInactivityChime();
+          if (window.Notification && Notification.permission === 'granted') {
+            try {
+              new Notification('Inactivity Warning', {
+                body: 'You will be logged out in 5 minutes due to inactivity.'
+              });
+            } catch (e) { }
+          }
+        } else if (idleTime >= maxIdleMs) {
+          clearInterval(_inactivityTimer);
+          if (typeof showToast === 'function') {
+            showToast('Signed out due to 30 minutes of inactivity.', 'error');
+          }
+          if (typeof backToSignIn === 'function') {
+            backToSignIn();
+          } else {
+            sessionStorage.clear();
+            localStorage.removeItem('crm-session-token');
+            localStorage.removeItem('crm-current-user');
+            window.location.href = '/';
+          }
+        }
+      }, 1000);
+    }
     /* ============ CUSTOM SELECT DROPDOWNS ============ */
     function syncCustomSelects(select) {
       if (!select._customWrapper) return;
@@ -11235,6 +11320,7 @@
       await loadAndEnter(userId);
       startPolling();
       startGlobalAttendanceWatcher();
+      startInactivityWatcher();
     }
 
     // Checks for a missed punch every 60s no matter which page/section the
