@@ -15,9 +15,21 @@
       try {
         const token = localStorage.getItem('crm-session-token');
         const profilePending = localStorage.getItem('crm-profile-setup-pending');
-        // If session exists but profile setup is still pending, stay on index.html
-        if (token && !profilePending) {
+        // Decode expiry from signed token payload (format: base64url.sig)
+        function isTokenExpired(t) {
+          try {
+            const payload = t.slice(0, t.lastIndexOf('.'));
+            const data = JSON.parse(atob(payload.replace(/-/g,'+').replace(/_/g,'/')));
+            return !data.expiresAt || Date.now() > data.expiresAt;
+          } catch { return true; }
+        }
+        // Only redirect to dashboard if token exists, is not expired, and profile setup is complete
+        if (token && !profilePending && !isTokenExpired(token)) {
           window.location.replace('/dashboard');
+        } else if (token && isTokenExpired(token)) {
+          // Clear stale expired token so the login page shows cleanly
+          localStorage.removeItem('crm-session-token');
+          localStorage.removeItem('crm-current-user');
         }
         // Always dark — remove any saved light theme preference
         try { localStorage.removeItem('crm-theme'); } catch (e) { }
