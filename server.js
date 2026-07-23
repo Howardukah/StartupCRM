@@ -1797,7 +1797,45 @@ app.post('/api/send-invite-email', validateSession, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('Email send error:', err);
-    res.status(500).json({ error: err.message || 'Failed to send invite email.' });
+    res.status(500).json({ error: err.message || 'Failed to send invite email.', code: err.code, response: err.response });
+  }
+});
+
+// Diagnostic endpoint to test SMTP connection settings
+app.get('/api/test-email', validateSession, async (req, res) => {
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+    return res.status(400).json({
+      ok: false,
+      error: 'SMTP environment variables are incomplete on server.',
+      env: {
+        SMTP_HOST: SMTP_HOST || 'MISSING',
+        SMTP_PORT: SMTP_PORT || 'MISSING (defaults to 465)',
+        SMTP_USER: SMTP_USER || 'MISSING',
+        SMTP_PASS: SMTP_PASS ? 'CONFIGURED (hidden)' : 'MISSING'
+      }
+    });
+  }
+
+  try {
+    const mailer = getMailer();
+    if (!mailer) throw new Error('Could not initialize mail transporter.');
+    await mailer.verify();
+    res.json({
+      ok: true,
+      message: `Successfully connected and authenticated to SMTP server (${SMTP_HOST}:${SMTP_PORT || 465})!`,
+      config: { host: SMTP_HOST, port: SMTP_PORT || 465, user: SMTP_USER }
+    });
+  } catch (err) {
+    console.error('[SMTP Test Error]', err);
+    res.status(500).json({
+      ok: false,
+      error: err.message,
+      code: err.code,
+      command: err.command,
+      response: err.response,
+      config: { host: SMTP_HOST, port: SMTP_PORT || 465, user: SMTP_USER }
+    });
   }
 });
 
