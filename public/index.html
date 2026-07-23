@@ -2004,12 +2004,7 @@
       err.style.color = 'var(--text-gray)';
       err.textContent = 'Signing you in…';
       const ctrl = new AbortController();
-      // Show "waking up" message if server takes more than 5 seconds (Render cold start)
-      const wakeupMsg = setTimeout(() => {
-        if (err.textContent === 'Signing you in…')
-          err.textContent = 'Server is waking up, please wait…';
-      }, 5000);
-      const timeout = setTimeout(() => ctrl.abort(), 25000); // 25-second hard timeout
+      const timeout = setTimeout(() => ctrl.abort(), 60000); // 60-second hard timeout (Render free-tier cold start)
       try {
         const res = await fetch(API_BASE + '/api/auth/login', {
           method: 'POST',
@@ -2018,7 +2013,6 @@
           signal: ctrl.signal
         });
         clearTimeout(timeout);
-        clearTimeout(wakeupMsg);
         err.textContent = '';
         err.style.color = '';
         const data = await res.json();
@@ -2062,7 +2056,6 @@
         enterApp(data.userId, data.token);
       } catch (e) {
         clearTimeout(timeout);
-        clearTimeout(wakeupMsg);
         err.style.color = '';
         const msg = e.name === 'AbortError'
           ? 'Server took too long to respond. It may be starting up — please try again in a moment.'
