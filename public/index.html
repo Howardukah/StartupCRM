@@ -2001,12 +2001,26 @@
       err.textContent = '';
       if (!email || !pwInput) return;
       setBtnLoading('btn-signin', true);
+      err.style.color = 'var(--text-gray)';
+      err.textContent = 'Signing you in…';
+      const ctrl = new AbortController();
+      // Show "waking up" message if server takes more than 5 seconds (Render cold start)
+      const wakeupMsg = setTimeout(() => {
+        if (err.textContent === 'Signing you in…')
+          err.textContent = 'Server is waking up, please wait…';
+      }, 5000);
+      const timeout = setTimeout(() => ctrl.abort(), 25000); // 25-second hard timeout
       try {
         const res = await fetch(API_BASE + '/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: email, password: pwInput.value })
+          body: JSON.stringify({ userId: email, password: pwInput.value }),
+          signal: ctrl.signal
         });
+        clearTimeout(timeout);
+        clearTimeout(wakeupMsg);
+        err.textContent = '';
+        err.style.color = '';
         const data = await res.json();
         if (!res.ok) { showFormError('signin-pw-error', data.error, 'Login failed.'); setBtnLoading('btn-signin', false); return; }
         if (data.mustChangePassword) {
@@ -2046,7 +2060,16 @@
           return;
         }
         enterApp(data.userId, data.token);
-      } catch (e) { showFormError('signin-pw-error', e, 'Could not reach server.'); setBtnLoading('btn-signin', false); }
+      } catch (e) {
+        clearTimeout(timeout);
+        clearTimeout(wakeupMsg);
+        err.style.color = '';
+        const msg = e.name === 'AbortError'
+          ? 'Server took too long to respond. It may be starting up — please try again in a moment.'
+          : 'Could not reach server. Check your connection and try again.';
+        showFormError('signin-pw-error', msg);
+        setBtnLoading('btn-signin', false);
+      }
     }
 
     async function submitForcedPasswordChange() {
