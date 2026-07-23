@@ -1521,28 +1521,17 @@ app.get('/api/get-plan/:projectId', validateSession, async (req, res) => {
 
 // Lazily-created transporter so we don't crash if SMTP vars are missing
 let _mailer = null;
-let _mailerKey = '';
 function getMailer() {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
-  const currentKey = `${SMTP_HOST}:${SMTP_PORT}:${SMTP_USER}`;
-  if (_mailer && _mailerKey === currentKey) return _mailer;
-  const port = parseInt(SMTP_PORT || '587', 10);
-  const isSecure = port === 465;
-  _mailerKey = currentKey;
-  _mailer = nodemailer.createTransport({
+  const port = parseInt(SMTP_PORT || '465', 10);
+  return nodemailer.createTransport({
     host: SMTP_HOST,
     port,
-    secure: isSecure,
+    secure: port === 465,
     auth: { user: SMTP_USER, pass: SMTP_PASS },
-    tls: {
-      rejectUnauthorized: false
-    },
-    connectionTimeout: 12000,
-    greetingTimeout: 12000,
-    socketTimeout: 20000
+    tls: { rejectUnauthorized: false }
   });
-  return _mailer;
 }
 
 
