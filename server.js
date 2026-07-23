@@ -77,6 +77,8 @@ app.get('/', (req, res, next) => {
   next(); // fallback to index.html (CRM login) served by express.static
 });
 
+app.get('/healthz', (req, res) => res.status(200).send('OK'));
+
 app.use(express.static(PUBLIC_DIR));
 
 // Belt-and-suspenders block for sensitive files in case they somehow end up
