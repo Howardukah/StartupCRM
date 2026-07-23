@@ -1532,10 +1532,15 @@ function getMailer() {
 function renderAutoMailHtml(template, vars) {
   const brandName = vars.fromName || process.env.SMTP_FROM_NAME || 'Startup CRM';
   const supportEmail = vars.supportEmail || process.env.SUPPORT_EMAIL || 'support@startupbuild.tech';
+  const appUrl = process.env.APP_URL || 'https://crm.startupbuild.tech';
+  const loginUrl = vars.loginUrl || (appUrl.replace(/\/$/, '') + '/');
 
   const allVars = {
     brandName,
     supportEmail,
+    appUrl,
+    loginUrl,
+    dashboardUrl: loginUrl,
     ...vars
   };
 
@@ -1544,6 +1549,10 @@ function renderAutoMailHtml(template, vars) {
   const bgColor = template.bgColor || '#F7F7F5';
   const cardBgColor = template.cardBgColor || '#FFFFFF';
   const textColor = template.textColor || '#111111';
+
+  // Sanitize any legacy localhost links in custom stored templates
+  subject = subject.replace(/http:\/\/localhost(:\d+)?/gi, appUrl).replace(/http:\/\/127\.0\.0\.1(:\d+)?/gi, appUrl);
+  bodyHtml = bodyHtml.replace(/http:\/\/localhost(:\d+)?/gi, appUrl).replace(/http:\/\/127\.0\.0\.1(:\d+)?/gi, appUrl);
 
   for (const [k, v] of Object.entries(allVars)) {
     const reg = new RegExp('{{\\s*' + k + '\\s*}}', 'g');
@@ -1715,17 +1724,17 @@ app.post('/api/send-invite-email', validateSession, async (req, res) => {
 <title>Welcome to Startup. - Your Account Login Details</title>
 <style>
   body{margin:0;padding:0;background:#F7F7F5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#111}
-  .email{max-width:640px;margin:0 auto;background:#fff;border:1px solid #EAEAE4}
-  .brand{padding:28px 32px 24px;border-bottom:1px solid #F0F0EA;font-size:18px;font-weight:800;color:#04013E}
+  .email{max-width:640px;margin:0 auto;background:#fff;border:1px solid #EAEAE4;border-radius:8px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.08)}
+  .brand{padding:28px 32px 24px;border-bottom:1px solid #F0F0EA;font-size:20px;font-weight:800;color:#04013E}
   .brand span{color:#12A3B4}
   .body{padding:42px 32px 36px}
-  h1{margin:0 0 24px;font-size:30px;line-height:1.15;font-weight:800;color:#050505}
-  p{margin:0 0 18px;line-height:1.65;font-size:14px;color:#111}
-  strong{font-weight:800}
-  .accent{color:#12A3B4;font-weight:800}
-  .key{font-family:Consolas,'Courier New',monospace;color:#084D58;font-weight:800}
-  .button{display:inline-block;background:#12A3B4;color:#fff;text-decoration:none;padding:14px 22px;border-radius:2px;font-weight:800;font-size:14px;margin:4px 0 18px}
-  a{color:#12A3B4;font-weight:800}
+  h1{margin:0 0 24px;font-size:26px;line-height:1.2;font-weight:800;color:#050505}
+  p{margin:0 0 18px;line-height:1.65;font-size:14px;color:#333}
+  strong{font-weight:700}
+  .accent{color:#12A3B4;font-weight:700}
+  .key{font-family:Consolas,'Courier New',monospace;color:#084D58;font-weight:700;background:rgba(18,163,180,0.08);padding:3px 8px;border-radius:4px}
+  .button{display:inline-block;background:#12A3B4;color:#ffffff !important;text-decoration:none;padding:14px 28px;border-radius:6px;font-weight:700;font-size:14px;margin:12px 0 18px}
+  a{color:#12A3B4;font-weight:700}
 </style>
 </head>
 <body>
@@ -1736,13 +1745,17 @@ app.post('/api/send-invite-email', validateSession, async (req, res) => {
     <p>Hi <strong>${toName}</strong>,</p>
     <p>Welcome to the team! We're excited to have you on board at <strong>Startup</strong>.</p>
     <p>Your account has been created and is ready to use. Here are your login details:</p>
-    <p>Login Email: <span class="accent">${toEmail}</span><br>Temporary Password: <span class="key">${password || '0000'}</span></p>
+    <p style="background:#F9F9F8;padding:16px 20px;border-radius:8px;border:1px solid #EAEAE4;line-height:1.8;">
+      <strong>Login Email:</strong> <span class="accent">${toEmail}</span><br>
+      <strong>Temporary Password:</strong> <span class="key">${password || '0000'}</span>
+    </p>
     <p>For security reasons, please log in and change your password immediately after your first sign-in.</p>
-    <p><a class="button" href="${loginUrl}">Open Dashboard</a></p>
-    <p>Login Link: <span class="key">${loginUrl}</span></p>
-    <p>If you have any trouble accessing your account, reach out to <a href="mailto:${supportEmail}">${supportEmail}</a>.</p>
-    <p>Looking forward to working with you.</p>
-    <p>Best regards,<br>Startup.</p>
+    <p style="margin:24px 0 20px;">
+      <a class="button" href="${loginUrl}" target="_blank" style="display:inline-block;background:#12A3B4;color:#ffffff !important;text-decoration:none;padding:14px 28px;border-radius:6px;font-weight:700;font-size:14px;">Open Dashboard &rarr;</a>
+    </p>
+    <p style="font-size:13px;color:#666;">Login Link: <a href="${loginUrl}" target="_blank" style="color:#12A3B4;word-break:break-all;">${loginUrl}</a></p>
+    <p style="margin-top:28px;font-size:13px;color:#666;">If you have any trouble accessing your account, reach out to <a href="mailto:${supportEmail}" style="color:#12A3B4;">${supportEmail}</a>.</p>
+    <p style="margin-top:24px;">Best regards,<br><strong>Startup Team</strong></p>
   </div>
 </div>
 </body>
@@ -1762,6 +1775,9 @@ app.post('/api/send-invite-email', validateSession, async (req, res) => {
       sendSubject = rendered.subject;
       sendHtml = rendered.html;
     }
+
+    // Ensure no localhost URLs slip through custom rules
+    sendHtml = sendHtml.replace(/http:\/\/localhost(:\d+)?/gi, appUrl).replace(/http:\/\/127\.0\.0\.1(:\d+)?/gi, appUrl);
 
     await mailer.sendMail({
       from: `"${fromName}" <${fromAddr}>`,
