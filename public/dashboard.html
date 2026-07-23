@@ -10827,7 +10827,7 @@
     let currentUserId = null;
     let currentProjectId = null;
     let projectFilterMode = 'all';
-    const API_BASE = window.location.port === '8787' ? '' : 'http://localhost:8787';
+    const API_BASE = ''; // Same-origin: frontend and backend served from the same server
 
     function uid(prefix) { return prefix + '_' + Math.random().toString(36).slice(2, 9); }
     function toggleTheme() {

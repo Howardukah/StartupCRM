@@ -1879,7 +1879,7 @@
     let pendingUserId = null;
     let pendingSecurityUserId = null;
     let securityQuestionFailCount = 0;
-    const API_BASE = window.location.port === '8787' ? '' : 'http://localhost:8787';
+    const API_BASE = ''; // Same-origin: frontend and backend served from the same server
 
     function showStep(name) {
       document.querySelectorAll('[data-step]').forEach(e => e.classList.toggle('is-active', e.dataset.step === name));
