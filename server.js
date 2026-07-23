@@ -1801,8 +1801,8 @@ app.post('/api/send-invite-email', validateSession, async (req, res) => {
   }
 });
 
-// Diagnostic endpoint to test SMTP connection settings
-app.get('/api/test-email', validateSession, async (req, res) => {
+// Diagnostic endpoint to test SMTP connection settings (public URL test)
+app.get('/api/test-email', async (req, res) => {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
     return res.status(400).json({
