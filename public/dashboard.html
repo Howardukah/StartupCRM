@@ -8400,6 +8400,83 @@
       background: var(--hover-bg, rgba(128,128,128,0.1));
     }
 
+    /* Threading & Conversations */
+    .mail-thread-message {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 12px;
+      background: var(--bg-card, #ffffff);
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      transition: box-shadow 0.2s, border-color 0.2s;
+    }
+    
+    .mail-thread-message:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      border-color: var(--primary, #14b8a6);
+    }
+    
+    .mail-thread-message-header {
+      padding: 12px 16px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      background: var(--bg-card-header, #fcfcfc);
+    }
+    
+    .mail-thread-message-meta {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    
+    .mail-thread-message-sender {
+      font-weight: 600;
+      color: var(--text);
+      font-size: 13px;
+    }
+    
+    .mail-thread-message-preview {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-overflow: ellipsis;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    
+    .mail-thread-message-date {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    
+    .mail-thread-message-body {
+      padding: 16px;
+      border-top: 1px solid var(--border);
+      font-size: 13.5px;
+      color: var(--text);
+      line-height: 1.6;
+    }
+    
+    .mail-thread-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--primary-light, #e0f2fe);
+      color: var(--primary, #0284c7);
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 9999px;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 4px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
     .mail-reader__actions {
       padding: 12px 24px;
       border-top: 1px solid var(--border);
@@ -13754,6 +13831,35 @@
       }
     }
 
+    function getNormalizedSubject(subject) {
+      if (!subject) return 'no-subject';
+      return subject
+        .toLowerCase()
+        .replace(/^(re|fwd|fw|reply|aw|wg|odp|vs|tr)\s*:\s*/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    window.toggleThreadMessage = function(id) {
+      const msgEl = document.getElementById('msg-' + id);
+      if (!msgEl) return;
+      const bodyEl = msgEl.querySelector('.mail-thread-message-body');
+      const previewEl = msgEl.querySelector('.mail-thread-message-preview');
+      const isExpanded = msgEl.classList.contains('is-expanded');
+      
+      if (isExpanded) {
+        msgEl.classList.remove('is-expanded');
+        msgEl.classList.add('is-collapsed');
+        if (bodyEl) bodyEl.style.display = 'none';
+        if (previewEl) previewEl.style.display = 'block';
+      } else {
+        msgEl.classList.remove('is-collapsed');
+        msgEl.classList.add('is-expanded');
+        if (bodyEl) bodyEl.style.display = 'block';
+        if (previewEl) previewEl.style.display = 'none';
+      }
+    };
+
     /* ---- render mail list ---- */
     function renderMailList() {
       const container = document.getElementById('mail-list-body');
@@ -13777,26 +13883,57 @@
         return;
       }
 
-      container.innerHTML = filtered.map(m => {
+      // Group by normalized subject
+      const threads = [];
+      const threadMap = {};
+
+      filtered.forEach(m => {
+        const normSubj = getNormalizedSubject(m.subject);
+        if (normSubj === 'no-subject' || normSubj === '') {
+          threads.push({
+            key: m.id,
+            emails: [m]
+          });
+        } else {
+          if (!threadMap[normSubj]) {
+            threadMap[normSubj] = {
+              key: normSubj,
+              emails: []
+            };
+            threads.push(threadMap[normSubj]);
+          }
+          threadMap[normSubj].emails.push(m);
+        }
+      });
+
+      container.innerHTML = threads.map(t => {
+        t.emails.sort((a, b) => new Date(b.date) - new Date(a.date));
+        const m = t.emails[0];
+        const count = t.emails.length;
+
         const initials = (m.fromName || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
         const dateStr = formatMailDate(m.date);
         const activeClass = (_selectedMailId === m.id && _selectedMailFolder === m.folder) ? 'is-active' : '';
-        const unreadClass = m.unread ? 'is-unread' : '';
+        const hasUnread = t.emails.some(msg => msg.unread);
+        const unreadClass = hasUnread ? 'is-unread' : '';
         const displaySender = _currentMailTab === 'sent' ? `To: ${m.to}` : m.fromName;
         const isReply = !!(m.inReplyTo);
-        // Build a clean snippet: prefer plaintext body, strip quoted lines ("> ..." and "On ... wrote:")
+
         let snippetSrc = m.body || '';
         if (!snippetSrc && m.html) {
-          // Strip HTML tags for snippet
           snippetSrc = m.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         }
         const snippetLines = snippetSrc.split('\n').filter(l => !/^>/.test(l) && !/^On .+ wrote:/.test(l));
         const snippet = snippetLines.join(' ').trim().substring(0, 60) + (snippetLines.join(' ').trim().length > 60 ? '…' : '');
+
         return `
           <div class="mail-list-item ${activeClass} ${unreadClass}" onclick="mailSelect('${m.folder}','${m.id}')">
             <div class="mail-item-row1">
               <div class="mail-item-avatar">${initials}</div>
-              <span class="mail-item-sender">${isReply ? '↩ ' : ''}${displaySender}</span>
+              <span class="mail-item-sender">
+                ${isReply ? '↩ ' : ''}${displaySender}
+                ${count > 1 ? `<span class="mail-thread-count">${count}</span>` : ''}
+              </span>
               <span class="mail-item-date">${dateStr}</span>
             </div>
             <div class="mail-item-subject">${m.subject || '(No Subject)'}</div>
@@ -13816,19 +13953,17 @@
 
     /* ---- select & read an email ---- */
     function mailSelect(folder, id) {
-      _selectedMailId = id;
-      _selectedMailFolder = folder;
-      const mail = _liveMails.find(m => m.id === id && m.folder === folder);
-      if (!mail) return;
+      const mainMail = _liveMails.find(m => m.id === id && m.folder === folder);
+      if (!mainMail) return;
 
       if (folder === 'drafts') {
         mailOpenCompose();
         _editingDraftId = id;
-        document.getElementById('mail-to').value = mail.to || '';
-        document.getElementById('mail-cc').value = mail.cc || '';
-        document.getElementById('mail-subject').value = mail.subject || '';
-        document.getElementById('mail-body').value = mail.body || '';
-        _composeAttachments = (mail.attachments || []).map(a => ({
+        document.getElementById('mail-to').value = mainMail.to || '';
+        document.getElementById('mail-cc').value = mainMail.cc || '';
+        document.getElementById('mail-subject').value = mainMail.subject || '';
+        document.getElementById('mail-body').value = mainMail.body || '';
+        _composeAttachments = (mainMail.attachments || []).map(a => ({
           filename: a.filename,
           mimeType: a.contentType,
           sizeBytes: a.size || 0,
@@ -13838,20 +13973,35 @@
         return;
       }
 
-      // Mark as read locally immediately so unread dot disappears
-      if (mail.unread) {
-        mail.unread = false;
+      const normSubj = getNormalizedSubject(mainMail.subject);
+      const threadMails = _liveMails.filter(m => {
+        if (normSubj && normSubj !== 'no-subject') {
+          return getNormalizedSubject(m.subject) === normSubj;
+        }
+        return m.id === id;
+      }).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+      const latestMail = threadMails[threadMails.length - 1];
+      _selectedMailId = latestMail.id;
+      _selectedMailFolder = latestMail.folder;
+
+      let anyMarkedRead = false;
+      threadMails.forEach(m => {
+        if (m.unread) {
+          m.unread = false;
+          anyMarkedRead = true;
+          fetch('/api/mail/mark-read', {
+            method: 'POST',
+            headers: apiHeaders(),
+            body: JSON.stringify({ folder: m.folder, uid: m.id }),
+          }).catch(() => {});
+        }
+      });
+
+      if (anyMarkedRead) {
         updateMailInboxBadge();
-        renderMailList();
-        // Fire-and-forget: mark \Seen on IMAP server so it persists
-        fetch('/api/mail/mark-read', {
-          method: 'POST',
-          headers: apiHeaders(),
-          body: JSON.stringify({ folder, uid: id }),
-        }).catch(() => { });
-      } else {
-        renderMailList();
       }
+      renderMailList();
 
       const reader = document.getElementById('mail-reader');
       const compose = document.getElementById('mail-compose');
@@ -13863,82 +14013,125 @@
       if (settings) settings.style.display = 'none';
       if (reader) reader.style.display = 'flex';
 
-      document.getElementById('mail-reader-subject').textContent = mail.subject || '(No Subject)';
-      document.getElementById('mail-reader-from').textContent = `${mail.fromName} <${mail.fromEmail}>`;
-      document.getElementById('mail-reader-date').textContent = new Date(mail.date).toLocaleString();
-
-      const initials = (mail.fromName || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-      const avatarEl = document.getElementById('mail-reader-avatar');
-      if (avatarEl) avatarEl.textContent = initials;
-
-
+      document.getElementById('mail-reader-subject').textContent = latestMail.subject || '(No Subject)';
+      
       const bodyEl = document.getElementById('mail-reader-body');
       if (bodyEl) {
-        if (mail.html) {
-          // Render full HTML email in a sandboxed iframe to isolate styles and scripts
-          const iframe = document.createElement('iframe');
-          iframe.setAttribute('sandbox', 'allow-same-origin');
-          iframe.style.cssText = 'width:100%;border:none;min-height:200px;background:#fff;';
-          iframe.title = 'Email content';
-          bodyEl.innerHTML = '';
-          bodyEl.appendChild(iframe);
-          // Write HTML after mount so srcdoc and sandbox work cross-browser
-          const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-          iframeDoc.open();
-          iframeDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;font-size:14px;margin:16px;color:#1a1a1a;word-break:break-word;}</style></head><body>${mail.html}</body></html>`);
-          iframeDoc.close();
-          // Auto-resize to content height
-          setTimeout(() => {
-            try { iframe.style.height = (iframe.contentDocument.body.scrollHeight + 32) + 'px'; } catch(e) {}
-          }, 100);
-        } else {
-          // Plain-text: split on quote markers (lines starting with ">") and collapse them
-          const rawText = mail.body || '';
-          const lines = rawText.split('\n');
-          const mainLines = [];
-          const quotedLines = [];
-          let inQuote = false;
-          for (const line of lines) {
-            if (/^>/.test(line) || /^On .+ wrote:/.test(line)) {
-              inQuote = true;
-            }
-            if (inQuote) {
-              quotedLines.push(line);
-            } else {
-              mainLines.push(line);
-            }
+        bodyEl.innerHTML = '';
+        threadMails.forEach((m, idx) => {
+          const isLatest = idx === threadMails.length - 1;
+          const initials = (m.fromName || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+          
+          const card = document.createElement('div');
+          card.className = `mail-thread-message ${isLatest ? 'is-expanded' : 'is-collapsed'}`;
+          card.id = `msg-${m.id}`;
+
+          const header = document.createElement('div');
+          header.className = 'mail-thread-message-header';
+          header.onclick = () => window.toggleThreadMessage(m.id);
+
+          let snippetSrc = m.body || '';
+          if (!snippetSrc && m.html) {
+            snippetSrc = m.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
           }
-          const mainHtml = mainLines.join('\n').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
-          if (quotedLines.length > 0) {
-            const quotedHtml = quotedLines.join('\n').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
-            bodyEl.innerHTML = mainHtml +
-              `<div class="mail-quoted-wrap">
-                <button class="mail-quoted-toggle" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.textContent=this.nextElementSibling.style.display==='none'?'▶ Show quoted text':'▼ Hide quoted text'">▶ Show quoted text</button>
-                <div class="mail-quoted-body" style="display:none;margin-top:8px;padding:8px 12px;border-left:3px solid var(--border);color:var(--text-muted);font-size:13px;">${quotedHtml}</div>
-              </div>`;
+          const snippetLines = snippetSrc.split('\n').filter(l => !/^>/.test(l) && !/^On .+ wrote:/.test(l));
+          const snippet = snippetLines.join(' ').trim().substring(0, 80) + (snippetLines.join(' ').trim().length > 80 ? '…' : '');
+
+          header.innerHTML = `
+            <div class="avatar" style="width:28px;height:28px;font-size:11px;">${initials}</div>
+            <div class="mail-thread-message-meta">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="mail-thread-message-sender">${m.fromName} &lt;${m.fromEmail}&gt;</span>
+                <span class="mail-thread-message-date">${new Date(m.date).toLocaleString()}</span>
+              </div>
+              <div class="mail-thread-message-preview" style="${isLatest ? 'display:none;' : 'display:block;'}">
+                ${snippet || '(No preview)'}
+              </div>
+            </div>
+          `;
+          card.appendChild(header);
+
+          const msgBody = document.createElement('div');
+          msgBody.className = 'mail-thread-message-body';
+          msgBody.style.display = isLatest ? 'block' : 'none';
+
+          if (m.html) {
+            const iframe = document.createElement('iframe');
+            iframe.setAttribute('sandbox', 'allow-same-origin');
+            iframe.style.cssText = 'width:100%;border:none;min-height:150px;background:#fff;';
+            iframe.title = 'Email content';
+            msgBody.appendChild(iframe);
+            
+            setTimeout(() => {
+              try {
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                iframeDoc.open();
+                iframeDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;font-size:14px;margin:8px;color:#1a1a1a;word-break:break-word;}</style></head><body>${m.html}</body></html>`);
+                iframeDoc.close();
+                setTimeout(() => {
+                  try { iframe.style.height = (iframe.contentDocument.body.scrollHeight + 16) + 'px'; } catch(e) {}
+                }, 100);
+              } catch (e) {
+                console.warn(e);
+              }
+            }, 0);
           } else {
-            bodyEl.innerHTML = mainHtml;
+            const rawText = m.body || '';
+            const lines = rawText.split('\n');
+            const mainLines = [];
+            const quotedLines = [];
+            let inQuote = false;
+            for (const line of lines) {
+              if (/^>/.test(line) || /^On .+ wrote:/.test(line)) {
+                inQuote = true;
+              }
+              if (inQuote) {
+                quotedLines.push(line);
+              } else {
+                mainLines.push(line);
+              }
+            }
+            const mainHtml = mainLines.join('\n').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+            if (quotedLines.length > 0) {
+              const quotedHtml = quotedLines.join('\n').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+              msgBody.innerHTML = mainHtml +
+                `<div class="mail-quoted-wrap">
+                  <button class="mail-quoted-toggle" onclick="event.stopPropagation(); this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.textContent=this.nextElementSibling.style.display==='none'?'▶ Show quoted text':'▼ Hide quoted text'">▶ Show quoted text</button>
+                  <div class="mail-quoted-body" style="display:none;margin-top:8px;padding:8px 12px;border-left:3px solid var(--border);color:var(--text-muted);font-size:13px;">${quotedHtml}</div>
+                </div>`;
+            } else {
+              msgBody.innerHTML = mainHtml;
+            }
           }
-        }
+
+          const atts = m.attachments || [];
+          if (atts.length) {
+            const attachWrap = document.createElement('div');
+            attachWrap.className = 'mail-reader__attachments';
+            attachWrap.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border);';
+            attachWrap.innerHTML = atts.map(a => `
+              <span class="mail-attach-chip" style="cursor:pointer" onclick="event.stopPropagation(); mailDownloadAttachment('${m.folder}','${m.id}',${a.index},'${(a.filename || '').replace(/'/g, "\\'")}')" title="Download ${a.filename}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>${a.filename} · ${mailFormatBytes(a.size || 0)}</span>
+              </span>
+            `).join('');
+            msgBody.appendChild(attachWrap);
+          }
+
+          card.appendChild(msgBody);
+          bodyEl.appendChild(card);
+        });
       }
 
-      const attachEl = document.getElementById('mail-reader-attachments');
-      if (attachEl) {
-        const atts = mail.attachments || [];
-        if (atts.length) {
-          attachEl.style.display = 'flex';
-          attachEl.innerHTML = atts.map(a => `
-            <span class="mail-attach-chip" style="cursor:pointer" onclick="mailDownloadAttachment('${mail.folder}','${mail.id}',${a.index},'${(a.filename || '').replace(/'/g, "\\'")}')" title="Download ${a.filename}">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              <span>${a.filename} · ${mailFormatBytes(a.size || 0)}</span>
-            </span>
-          `).join('');
-        } else {
-          attachEl.style.display = 'none';
-          attachEl.innerHTML = '';
-        }
+      const globalAttachEl = document.getElementById('mail-reader-attachments');
+      if (globalAttachEl) {
+        globalAttachEl.style.display = 'none';
+        globalAttachEl.innerHTML = '';
       }
+
       updateMailboxLayoutClass();
+    }
+
     }
 
     /* ---- download an attachment from a synced email ---- */
