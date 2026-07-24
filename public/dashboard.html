@@ -16732,7 +16732,7 @@
     function renderMailTemplateSelect() {
       const sel = document.getElementById('mail-template-select');
       if (!sel) return;
-      let html = '<option value="">-- Select Template --</option>';
+      let html = '<option value="">Select Template</option>';
       (db.mailTemplates || []).forEach(t => {
         html += '<option value="' + t.id + '">' + escapeHtml(t.name) + '</option>';
       });
