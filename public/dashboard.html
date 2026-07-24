@@ -14691,9 +14691,16 @@
 
         _replyingToMailId = null;
 
-        // Sync Sent folder to reflect new message
+        // Sync Sent folder to reflect new message and navigate to Sent tab
         _liveMails = _liveMails.filter(m => m.folder !== 'sent');
+        await mailSyncFolder('sent');
         mailGoFolder('sent');
+
+        // Automatically select & open the sent email inside the mail reader view
+        const sentMailId = (json.sentMail && json.sentMail.id) || (_liveMails.find(m => m.folder === 'sent')?.id);
+        if (sentMailId) {
+          mailSelect('sent', sentMailId);
+        }
       } catch (e) {
         showToast('Send failed: ' + e.message, 'error');
       } finally {

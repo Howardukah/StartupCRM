@@ -2840,7 +2840,7 @@ app.post('/api/mail/reply', validateSession, async (req, res) => {
       const cacheKey = `${req.userId}:sent`;
       if (mailboxCache.has(cacheKey)) {
         const list = mailboxCache.get(cacheKey);
-        list.unshift({
+        const sentMailObj = {
           id: row.id,
           messageId: row.message_id,
           folder: 'sent',
@@ -2859,10 +2859,12 @@ app.post('/api/mail/reply', validateSession, async (req, res) => {
             contentType: a.contentType || 'application/octet-stream'
           })),
           date: row.created_at
-        });
+        };
+        list.unshift(sentMailObj);
         if (list.length > 100) {
           list.splice(100);
         }
+        return res.json({ ok: true, sentMail: sentMailObj });
       }
     }
 
@@ -3008,33 +3010,38 @@ app.post('/api/mail/send', validateSession, async (req, res) => {
       console.error('Error inserting sent email into Supabase:', insertErr);
     } else if (insertedRows && insertedRows[0]) {
       const row = insertedRows[0];
+      const sentMailObj = {
+        id: row.id,
+        messageId: row.message_id,
+        folder: 'sent',
+        fromName: row.from_name || row.from_email,
+        fromEmail: row.from_email,
+        to: row.to_email,
+        cc: row.cc,
+        subject: row.subject,
+        body: row.body,
+        html: row.html,
+        unread: row.unread,
+        attachments: (row.attachments || []).map((a, i) => ({
+          index: i,
+          filename: a.filename,
+          size: a.size || 0,
+          contentType: a.contentType || 'application/octet-stream'
+        })),
+        date: row.created_at
+      };
+
       const cacheKey = `${req.userId}:sent`;
       if (mailboxCache.has(cacheKey)) {
         const list = mailboxCache.get(cacheKey);
-        list.unshift({
-          id: row.id,
-          messageId: row.message_id,
-          folder: 'sent',
-          fromName: row.from_name || row.from_email,
-          fromEmail: row.from_email,
-          to: row.to_email,
-          cc: row.cc,
-          subject: row.subject,
-          body: row.body,
-          html: row.html,
-          unread: row.unread,
-          attachments: (row.attachments || []).map((a, i) => ({
-            index: i,
-            filename: a.filename,
-            size: a.size || 0,
-            contentType: a.contentType || 'application/octet-stream'
-          })),
-          date: row.created_at
-        });
+        list.unshift(sentMailObj);
         if (list.length > 100) {
           list.splice(100);
         }
       }
+
+      console.log(`📤 Email sent via Resend API by ${req.userId} (${member.mailboxAddress}) to ${to}`);
+      return res.json({ ok: true, sentMail: sentMailObj });
     }
     
     console.log(`📤 Email sent via Resend API by ${req.userId} (${member.mailboxAddress}) to ${to}`);
