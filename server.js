@@ -491,43 +491,20 @@ function reconcileUserCollection(serverList, clientList, userId, visibleFn) {
   return result;
 }
 
-function generateUniqueMailboxAddress(name, existingAddresses) {
-  let base = (name || '').toLowerCase()
-    .replace(/[^a-z0-9]/g, '.')
-    .replace(/\.+/g, '.')
-    .replace(/^\.|\.$/g, '');
-  if (!base) base = 'user';
-  
-  const domain = 'startupbuild.tech';
-  let candidate = `${base}@${domain}`;
-  let counter = 1;
-  while (existingAddresses.has(candidate)) {
-    candidate = `${base}${counter}@${domain}`;
-    counter++;
-  }
-  return candidate;
-}
-
 async function migrateMailboxAddresses() {
   try {
     const data = await getCrmData();
     let changed = false;
     const team = data.team || [];
-    const used = new Set();
     
     for (const m of team) {
-      if (m && m.mailboxAddress) {
-        used.add(m.mailboxAddress.toLowerCase());
-      }
-    }
-    
-    for (const m of team) {
-      if (m && !m.mailboxAddress) {
-        const addr = generateUniqueMailboxAddress(m.name, used);
-        m.mailboxAddress = addr;
-        used.add(addr.toLowerCase());
-        changed = true;
-        console.log(`📧 Migrated team member ${m.name} -> Assigned mailboxAddress: ${addr}`);
+      if (m) {
+        const expectedAddr = (m.companyMail || m.email || '').trim().toLowerCase();
+        if (expectedAddr && m.mailboxAddress !== expectedAddr) {
+          m.mailboxAddress = expectedAddr;
+          changed = true;
+          console.log(`📧 Updated team member ${m.name} -> Assigned mailboxAddress: ${expectedAddr}`);
+        }
       }
     }
     
@@ -1390,6 +1367,14 @@ app.post('/api/db', validateSession, async (req, res) => {
         } else {
           incoming.team = teamList;
         }
+
+        // Ensure mailboxAddress is kept in sync with companyMail || email
+        incoming.team.forEach(m => {
+          if (m) {
+            m.mailboxAddress = (m.companyMail || m.email || '').trim().toLowerCase();
+          }
+        });
+
         revokeSessionsForUsers(sessionUserIdsToRevokeAfterTeamChange(current.team, incoming.team));
         merged.team = incoming.team;
       }
@@ -1641,12 +1626,7 @@ app.post('/api/team/add', validateSession, async (req, res) => {
       return res.status(400).json({ error: `A team member with email ${email} already exists.` });
     }
 
-    const used = new Set();
-    for (const m of current.team || []) {
-      if (m && m.mailboxAddress) used.add(m.mailboxAddress.toLowerCase());
-    }
-
-    const mailboxAddress = generateUniqueMailboxAddress(name, used);
+    const mailboxAddress = (companyMail || email).trim().toLowerCase();
     const tmpPassword = '0000';
     const newMember = {
       id: 'mem_' + Math.random().toString(36).substr(2, 9),
