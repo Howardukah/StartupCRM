@@ -9,8 +9,6 @@ import OpenAI from 'openai';
 import path from 'path';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
-import { ImapFlow } from 'imapflow';
-import { simpleParser } from 'mailparser';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { createRequire } from 'module';
@@ -889,13 +887,47 @@ app.post('/webhooks/inbound-mail', async (req, res) => {
       created_at: emailData.created_at || new Date().toISOString()
     }));
 
-    const { error: insertErr } = await supabase
+    const { data: insertedRows, error: insertErr } = await supabase
       .from('mailbox_emails')
-      .upsert(inboundRows, { onConflict: 'user_id,message_id' });
+      .upsert(inboundRows, { onConflict: 'user_id,message_id' })
+      .select('*');
 
     if (insertErr) {
       console.error('Error inserting inbound mail into Supabase:', insertErr);
       return res.status(500).json({ error: insertErr.message });
+    }
+
+    // Update write-through cache in place
+    for (const row of insertedRows || []) {
+      const cacheKey = `${row.user_id}:inbox`;
+      if (mailboxCache.has(cacheKey)) {
+        const list = mailboxCache.get(cacheKey);
+        if (!list.some(m => m.messageId === row.message_id)) {
+          list.unshift({
+            id: row.id,
+            messageId: row.message_id,
+            folder: 'inbox',
+            fromName: row.from_name || row.from_email,
+            fromEmail: row.from_email,
+            to: row.to_email,
+            cc: row.cc,
+            subject: row.subject,
+            body: row.body,
+            html: row.html,
+            unread: row.unread,
+            attachments: (row.attachments || []).map((a, i) => ({
+              index: i,
+              filename: a.filename,
+              size: a.size || 0,
+              contentType: a.contentType || 'application/octet-stream'
+            })),
+            date: row.created_at
+          });
+          if (list.length > 100) {
+            list.splice(100);
+          }
+        }
+      }
     }
 
     console.log(`📧 Webhook successfully processed. Handled mail for ${matchingMembers.map(m => m.name).join(', ')}`);
@@ -1311,7 +1343,7 @@ app.post('/api/db', validateSession, async (req, res) => {
 
     const merged = { ...current };
 
-    const SHARED_KEYS = ['clients', 'projects', 'messages', 'chatGroups', 'notifications'];
+    const SHARED_KEYS = ['clients', 'projects', 'chatGroups', 'notifications'];
 
     for (const key of SHARED_KEYS) {
       if (incoming[key] !== undefined) {
@@ -1405,6 +1437,86 @@ app.post('/api/db', validateSession, async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+function escapeHtml(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// POST /api/chat/send — dedicated chat message send endpoint to avoid overwrites
+app.post('/api/chat/send', validateSession, async (req, res) => {
+  try {
+    const { message } = req.body || {};
+    if (!message || !message.id || !message.fromId) {
+      return res.status(400).json({ error: 'Invalid message payload.' });
+    }
+
+    if (message.fromId !== req.userId) {
+      return res.status(403).json({ error: 'Sender ID does not match current session user.' });
+    }
+
+    const current = await getCrmData();
+    current.messages = current.messages || [];
+
+    const dbMessage = {
+      ...message,
+      deliveryStatus: 'delivered'
+    };
+
+    const exists = current.messages.some(m => m.id === message.id);
+    if (!exists) {
+      current.messages.push(dbMessage);
+
+      // Generate recipient notifications on the server
+      const sender = (current.team || []).find(m => m.id === message.fromId);
+      const senderName = sender ? sender.name : 'Someone';
+      const textPreview = message.text || (message.attachments && message.attachments.length ? 'Attachment' : '');
+
+      if (message.groupId) {
+        const group = (current.chatGroups || []).find(g => g.id === message.groupId);
+        if (group && (group.memberIds || []).includes(req.userId)) {
+          current.notifications = current.notifications || [];
+          (group.memberIds || []).forEach(mId => {
+            if (mId !== req.userId) {
+              current.notifications.push({
+                id: 'notif_' + Math.random().toString(36).substr(2, 9),
+                userId: mId,
+                text: `<b>${escapeHtml(senderName)}</b> sent a message in <b>${escapeHtml(group.name)}</b>: "${escapeHtml(textPreview)}"`,
+                projectId: null,
+                time: new Date().toISOString(),
+                read: false,
+                meta: { type: 'chat-group', chatId: `group-${message.groupId}`, actorId: req.userId }
+              });
+            }
+          });
+        }
+      } else if (message.toId) {
+        current.notifications = current.notifications || [];
+        current.notifications.push({
+          id: 'notif_' + Math.random().toString(36).substr(2, 9),
+          userId: message.toId,
+          text: `<b>${escapeHtml(senderName)}</b> sent you a message: "${escapeHtml(textPreview)}"`,
+          projectId: null,
+          time: new Date().toISOString(),
+          read: false,
+          meta: { type: 'chat-group', chatId: req.userId, actorId: req.userId }
+        });
+      }
+    }
+
+    await setCrmData(current);
+    io.emit('db_changed', { type: 'chat' });
+    res.json({ ok: true, message: dbMessage });
+  } catch (e) {
+    console.error('POST /api/chat/send error:', e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -2293,24 +2405,8 @@ app.get('/api/test-email', async (req, res) => {
    Supabase (inside the crm jsonb blob), AES-256-GCM encrypted. They are NEVER returned via /api/db.
    â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â•  */
 
-/** Resolve the correct Zoho IMAP/SMTP host based on the user's email TLD. */
-function getZohoHostsMigration(email) {
-  const lc = (email || '').toLowerCase();
-  if (lc.endsWith('.eu') || lc.includes('@zoho.eu')) return 'imap.zoho.eu';
-  if (lc.endsWith('.in') || lc.includes('@zoho.in') || lc.includes('.in>')) return 'imap.zoho.in';
-  return 'imap.zoho.com';
-}
-
-/** Build an authenticated ImapFlow client from decrypted credentials. */
-function makeImapClient(host, port, email, password) {
-  return new ImapFlow({
-    host: host || 'imap.secureserver.net',
-    port: parseInt(port || '993', 10),
-    secure: true,
-    auth: { user: email, pass: password },
-    logger: false,
-  });
-}
+// In-memory write-through cache for user mailbox lists (capped at 100 recent items)
+const mailboxCache = new Map(); // Key: `${userId}:${folder}` -> Array of formatted emails
 
 // GET  /api/mail/settings  — return saved settings (display name only)
 app.get('/api/mail/settings', validateSession, async (req, res) => {
@@ -2416,47 +2512,6 @@ app.delete('/api/mail/drafts/:id', validateSession, async (req, res) => {
   }
 });
 
-// POST /api/mail/test-connection  — verify IMAP credentials live
-app.post('/api/mail/test-connection', validateSession, async (req, res) => {
-  try {
-    const data = await getCrmData();
-    let saved = ((data.mailSettings || {})[req.userId]) || null;
-    
-    if (!saved && data.zohoMailSettings && data.zohoMailSettings[req.userId]) {
-      const old = data.zohoMailSettings[req.userId];
-      const imapHost = getZohoHostsMigration(old.email);
-      saved = {
-        email: old.email,
-        host: imapHost,
-        port: 993,
-        name: old.name || '',
-        replyto: old.replyto || '',
-        encryptedPassword: old.encryptedPassword
-      };
-      if (!data.mailSettings) data.mailSettings = {};
-      data.mailSettings[req.userId] = saved;
-      await setCrmData(data);
-    }
-
-    if (!saved || !saved.encryptedPassword) {
-      return res.status(400).json({ error: 'No credentials saved. Please save your settings first.' });
-    }
-    const password = decryptField(saved.encryptedPassword);
-    const client = makeImapClient(saved.host, saved.port, saved.email, password);
-    await client.connect();
-    try {
-      await client.selectMailbox('INBOX');
-    } finally {
-      await client.logout();
-    }
-    res.json({ ok: true });
-  } catch (e) {
-    console.error('Test-connection error:', e.message);
-    res.status(502).json({ error: e.message || 'IMAP connection failed.' });
-  }
-});
-
-// GET  /api/mail/inbox?folder=inbox|sent|drafts  — fetch live emails from database
 app.get('/api/mail/inbox', validateSession, async (req, res) => {
   try {
     const folder = (req.query.folder || 'inbox').toLowerCase();
@@ -2471,13 +2526,19 @@ app.get('/api/mail/inbox', validateSession, async (req, res) => {
       return res.status(400).json({ error: 'Invalid folder' });
     }
 
-    // Fetch emails from Supabase mailbox_emails table
+    const cacheKey = `${req.userId}:${folder}`;
+    if (mailboxCache.has(cacheKey)) {
+      return res.json({ ok: true, emails: mailboxCache.get(cacheKey) });
+    }
+
+    // Fetch emails from Supabase mailbox_emails table (capped at 100 recent)
     const { data: emails, error } = await supabase
       .from('mailbox_emails')
       .select('*')
       .eq('user_id', req.userId)
       .eq('folder', folder)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(100);
 
     if (error) {
       throw new Error(error.message);
@@ -2504,6 +2565,7 @@ app.get('/api/mail/inbox', validateSession, async (req, res) => {
       date: e.created_at
     }));
 
+    mailboxCache.set(cacheKey, formatted);
     res.json({ ok: true, emails: formatted });
   } catch (e) {
     console.error('Mail fetch error:', e.message);
@@ -2523,6 +2585,17 @@ app.post('/api/mail/mark-read', validateSession, async (req, res) => {
       .eq('user_id', req.userId);
 
     if (error) throw new Error(error.message);
+
+    // Update write-through cache
+    const cacheKey = `${req.userId}:inbox`;
+    if (mailboxCache.has(cacheKey)) {
+      const list = mailboxCache.get(cacheKey);
+      const cachedItem = list.find(m => m.id === uid);
+      if (cachedItem) {
+        cachedItem.unread = false;
+      }
+    }
+
     res.json({ ok: true });
   } catch (e) {
     console.error('Mail mark-read error:', e.message);
@@ -2695,12 +2768,42 @@ app.post('/api/mail/reply', validateSession, async (req, res) => {
       created_at: new Date().toISOString()
     };
 
-    const { error: insertErr } = await supabase
+    const { data: insertedRows, error: insertErr } = await supabase
       .from('mailbox_emails')
-      .insert(sentRecord);
+      .insert(sentRecord)
+      .select('*');
 
     if (insertErr) {
       console.error('Error inserting sent reply into Supabase:', insertErr);
+    } else if (insertedRows && insertedRows[0]) {
+      const row = insertedRows[0];
+      const cacheKey = `${req.userId}:sent`;
+      if (mailboxCache.has(cacheKey)) {
+        const list = mailboxCache.get(cacheKey);
+        list.unshift({
+          id: row.id,
+          messageId: row.message_id,
+          folder: 'sent',
+          fromName: row.from_name || row.from_email,
+          fromEmail: row.from_email,
+          to: row.to_email,
+          cc: row.cc,
+          subject: row.subject,
+          body: row.body,
+          html: row.html,
+          unread: row.unread,
+          attachments: (row.attachments || []).map((a, i) => ({
+            index: i,
+            filename: a.filename,
+            size: a.size || 0,
+            contentType: a.contentType || 'application/octet-stream'
+          })),
+          date: row.created_at
+        });
+        if (list.length > 100) {
+          list.splice(100);
+        }
+      }
     }
 
     console.log(`📤 Reply successfully sent and archived via Resend API by ${req.userId} to ${to}`);
@@ -2836,12 +2939,42 @@ app.post('/api/mail/send', validateSession, async (req, res) => {
       created_at: new Date().toISOString()
     };
 
-    const { error: insertErr } = await supabase
+    const { data: insertedRows, error: insertErr } = await supabase
       .from('mailbox_emails')
-      .insert(sentRecord);
+      .insert(sentRecord)
+      .select('*');
 
     if (insertErr) {
       console.error('Error inserting sent email into Supabase:', insertErr);
+    } else if (insertedRows && insertedRows[0]) {
+      const row = insertedRows[0];
+      const cacheKey = `${req.userId}:sent`;
+      if (mailboxCache.has(cacheKey)) {
+        const list = mailboxCache.get(cacheKey);
+        list.unshift({
+          id: row.id,
+          messageId: row.message_id,
+          folder: 'sent',
+          fromName: row.from_name || row.from_email,
+          fromEmail: row.from_email,
+          to: row.to_email,
+          cc: row.cc,
+          subject: row.subject,
+          body: row.body,
+          html: row.html,
+          unread: row.unread,
+          attachments: (row.attachments || []).map((a, i) => ({
+            index: i,
+            filename: a.filename,
+            size: a.size || 0,
+            contentType: a.contentType || 'application/octet-stream'
+          })),
+          date: row.created_at
+        });
+        if (list.length > 100) {
+          list.splice(100);
+        }
+      }
     }
     
     console.log(`📤 Email sent via Resend API by ${req.userId} (${member.mailboxAddress}) to ${to}`);

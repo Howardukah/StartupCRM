@@ -11072,11 +11072,32 @@
       if (!token) return;
       if (!_socket) {
         _socket = io({ auth: { token } });
-        _socket.on('db_changed', () => {
+        _socket.on('db_changed', (data) => {
           window._lastAssetCountsStr = '';
           if (typeof window.refreshProjectAssetCounts === 'function') {
             window.refreshProjectAssetCounts();
           }
+          
+          if (data && data.type === 'mail') {
+            if (data.userId === currentUserId) {
+              const mailActive = document.querySelector('[data-view-page].is-active')?.dataset.viewPage === 'mail';
+              if (mailActive && _currentMailTab === 'inbox') {
+                mailSyncFolder('inbox');
+              } else {
+                fetch('/api/mail/inbox?folder=inbox', { headers: apiHeaders() })
+                  .then(r => r.json())
+                  .then(json => {
+                    if (json.ok) {
+                      _liveMails = _liveMails.filter(m => m.folder !== 'inbox');
+                      _liveMails = _liveMails.concat(json.emails || []);
+                      updateMailInboxBadge();
+                    }
+                  }).catch(() => {});
+              }
+            }
+            return;
+          }
+
           if (typeof reloadDBFromDisk === 'function') reloadDBFromDisk();
         });
         _socket.on('activity_logged', () => {
@@ -11736,7 +11757,7 @@
       (localMessages || []).forEach(localMsg => {
         if (!localMsg || !localMsg.id) return;
         if (!serverMsgMap.has(localMsg.id)) {
-          if (localMsg.deliveryStatus === 'pending' || localMsg.deliveryStatus === 'queued' || localMsg.fromId === currentUserId) {
+          if (localMsg.deliveryStatus === 'pending' || localMsg.deliveryStatus === 'queued') {
             merged.push(localMsg);
           }
         } else {
@@ -14761,12 +14782,8 @@
         const group = getChatGroup(groupId);
         if (!group || !(group.memberIds || []).includes(currentUserId)) { showToast('You are not a member of this group.', 'error'); return; }
         message = { id: uid('msg'), fromId: currentUserId, groupId, text, time: now(), readBy: [currentUserId], attachments, deliveryStatus: 'pending', replyTo };
-        (group.memberIds || []).filter(mId => mId !== currentUserId).forEach(mId => {
-          addNotification(mId, '<b>' + escapeHTML(displayNameFor(currentUserId)) + '</b> sent a message in <b>' + escapeHTML(group.name) + '</b>: "' + escapeHTML(text || 'Attachment') + '"', null, { type: 'chat-group', chatId: chatId, actorId: currentUserId });
-        });
       } else {
         message = { id: uid('msg'), fromId: currentUserId, toId: chatId, text, time: now(), read: false, attachments, deliveryStatus: 'pending', replyTo };
-        addNotification(chatId, '<b>' + escapeHTML(displayNameFor(currentUserId)) + '</b> sent you a message: "' + escapeHTML(text || 'Attachment') + '"', null, { type: 'chat-group', chatId: currentUserId, actorId: currentUserId });
       }
       db.messages.push(message);
       input.value = '';
@@ -14779,7 +14796,16 @@
       cacheDbLocally();
       renderChat();
       try {
-        await saveDB(false);
+        const token = sessionStorage.getItem('crm-session-token');
+        const res = await fetch(API_BASE + '/api/chat/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-session-token': token || '' },
+          body: JSON.stringify({ message })
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Send failed');
+        }
         message.deliveryStatus = 'delivered';
         cacheDbLocally();
         renderChat();
