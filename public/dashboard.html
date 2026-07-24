@@ -13973,13 +13973,14 @@
     }
 
     let _knownMailIds = new Set();
+    let _syncedFolders = new Set();
     let _mailSyncInitialized = false;
 
     /* ---- sync folder from server ---- */
     async function mailSyncFolder(folder, isSilent = false) {
       if (_mailSyncing) return;
       
-      const hasLocalCache = _liveMails.some(m => m.folder === folder);
+      const hasLocalCache = _syncedFolders.has(folder) || _liveMails.some(m => m.folder === folder);
       if (!isSilent) {
         if (hasLocalCache) {
           renderMailList();
@@ -14001,6 +14002,7 @@
         if (!r.ok) throw new Error(json.error || 'Sync failed');
 
         const incomingMails = json.emails || [];
+        _syncedFolders.add(folder);
 
         if (!_mailSyncInitialized) {
           // Initialize known mail IDs set on first load without firing alerts for old emails
