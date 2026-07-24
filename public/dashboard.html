@@ -13674,11 +13674,18 @@
     /* ---- sync folder from server ---- */
     async function mailSyncFolder(folder) {
       if (_mailSyncing) return;
-      _mailSyncing = true;
-      const container = document.getElementById('mail-list-body');
-      if (container) {
-        container.innerHTML = '<div class="mail-empty-list" style="color:var(--text-muted);font-size:13px;padding:20px;">Syncing...</div>';
+      
+      const hasLocalCache = _liveMails.some(m => m.folder === folder);
+      if (hasLocalCache) {
+        renderMailList();
+      } else {
+        const container = document.getElementById('mail-list-body');
+        if (container) {
+          container.innerHTML = '<div class="mail-empty-list" style="color:var(--text-muted);font-size:13px;padding:20px;">Syncing...</div>';
+        }
       }
+
+      _mailSyncing = true;
 
       try {
         const r = await fetch(`/api/mail/inbox?folder=${encodeURIComponent(folder)}`, {
@@ -13706,7 +13713,8 @@
         renderMailList();
       } catch (e) {
         showToast('Sync error: ' + e.message, 'error');
-        if (container) container.innerHTML = '<div class="mail-empty-list">Failed to load emails.</div>';
+        const container = document.getElementById('mail-list-body');
+        if (container && !hasLocalCache) container.innerHTML = '<div class="mail-empty-list">Failed to load emails.</div>';
       } finally {
         _mailSyncing = false;
       }
