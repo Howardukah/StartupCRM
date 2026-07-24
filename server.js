@@ -724,6 +724,8 @@ app.post('/webhooks/inbound-mail', async (req, res) => {
     };
     const secret = process.env.RESEND_WEBHOOK_SECRET;
 
+    console.log('DEBUG Webhook: Available environment keys starting with RESEND_:', Object.keys(process.env).filter(k => k.startsWith('RESEND_')));
+
     if (!headers['svix-id'] || !headers['svix-timestamp'] || !headers['svix-signature']) {
       return res.status(400).json({ error: 'Missing Svix headers' });
     }
