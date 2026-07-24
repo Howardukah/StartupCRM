@@ -9281,6 +9281,56 @@
       justify-content: space-between;
       margin-bottom: 10px;
     }
+    
+    /* Mail Templates Upgrades */
+    .template-item {
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      position: relative;
+      background: var(--surface);
+    }
+    .template-item:hover {
+      background: var(--surface-2);
+      border-color: var(--border-strong);
+    }
+    .template-item.active {
+      background: rgba(18, 163, 180, 0.08);
+      border-color: var(--accent);
+    }
+    .template-item__name {
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .template-item__subject {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .var-badge {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 4px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      color: var(--text);
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .var-badge:hover {
+      background: var(--border) !important;
+      border-color: var(--border-strong) !important;
+      color: var(--accent-ink) !important;
+    }
     </style>
   <script src="/socket.io/socket.io.js"></script>
 <style>
@@ -9797,7 +9847,7 @@
                   </div>
                   <div class="mail-compose__foot">
                     <button class="btn btn--primary btn--sm" onclick="mailSendCompose()">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:-2px;margin-right:4px">
                         <line x1="22" y1="2" x2="11" y2="13"></line>
                         <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                       </svg>
@@ -9808,41 +9858,14 @@
                 </div>
                 <!-- Settings -->
                 <div class="mail-settings" id="mail-settings" style="display:none;">
-                  <h3>Mail Account Settings</h3>
-                  <p>Connect your personal Zoho email account. Your App Password is stored encrypted and only used to
-                    send and receive mail on your behalf.</p>
-                  <div class="mail-settings-section">
-                    <label>Your Zoho Email Address</label>
-                    <input type="email" id="mail-set-email" placeholder="yourname@startupbuild.tech" readonly="" style="opacity:.7;cursor:default;">
-                    <label>Zoho App Password</label>
-                    <input type="password" id="mail-set-password" placeholder="16-character app password from Zoho">
-                    <div id="mail-set-status" class="mail-status-pill not-configured">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="8" x2="12" y2="12"></line>
-                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                      </svg>
-                      Not configured
-                    </div>
-                  </div>
+                  <h3>Mail Settings</h3>
+                  <p>Configure your mailbox identity details below.</p>
                   <div class="mail-settings-section">
                     <label>Display Name (sent as)</label>
                     <input type="text" id="mail-set-name" placeholder="Your Full Name">
-                    <label>Reply-To Address (optional)</label>
-                    <input type="email" id="mail-set-replyto" placeholder="Same as above by default">
                   </div>
                   <div style="display:flex;gap:10px;flex-wrap:wrap;">
                     <button class="btn btn--primary btn--sm" onclick="mailSaveSettings()">Save Settings</button>
-                    <button class="btn btn--secondary btn--sm" onclick="mailTestConnection()">Test Connection</button>
-                  </div>
-                  <div style="margin-top:20px;padding:14px;background:var(--surface-2);border-radius:8px;border:1px solid var(--border);">
-                    <div style="font-size:12px;font-weight:700;margin-bottom:6px;">How to get a Zoho App Password</div>
-                    <ol style="font-size:12px;color:var(--text-muted);margin:0;padding-left:18px;line-height:1.8;">
-                      <li>Log in to <strong>accounts.zoho.com</strong></li>
-                      <li>Go to <strong>Security → App Passwords</strong></li>
-                      <li>Click <strong>Generate New Password</strong>, name it "CRM"</li>
-                      <li>Copy the 16-character password and paste it above</li>
-                    </ol>
                   </div>
                 </div>
               </div>
@@ -10789,21 +10812,58 @@
 
   <!-- ============ MODAL: MAIL TEMPLATES ============ -->
   <div class="modal" id="modal-mail-templates">
-    <div class="modal__panel" style="max-width:650px;">
+    <div class="modal__panel" style="max-width:850px; width: 90%;">
       <button class="modal__close" onclick="closeModal('modal-mail-templates')">×</button>
       <h2 style="margin-top:0">Mail Templates</h2>
-      <div style="display:flex; gap:20px;">
-        <div style="flex:1; border-right:1px solid var(--border); padding-right:20px;">
-          <ul id="mt-list" style="list-style:none; padding:0; margin:0; max-height:300px; overflow-y:auto;"></ul>
-          <button class="btn btn--secondary btn--sm" style="margin-top:16px; width:100%" onclick="newMailTemplate()">+
-            New Template</button>
+      <div style="display:flex; gap:24px;">
+        <!-- Left Side: List & Search -->
+        <div style="flex:1; border-right:1px solid var(--border); padding-right:20px; display: flex; flex-direction: column;">
+          <div style="margin-bottom: 12px;">
+            <input type="text" id="mt-search" class="field__input" placeholder="Search templates..." oninput="renderMailTemplatesList()" style="width: 100%; font-size: 13px; height: 34px; padding: 6px 10px;">
+          </div>
+          <ul id="mt-list" style="list-style:none; padding:0; margin:0; max-height:350px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></ul>
+          <button class="btn btn--secondary btn--sm" style="margin-top:16px; width:100%" onclick="newMailTemplate()">+ New Template</button>
         </div>
-        <div style="flex:2;">
-          <input type="hidden" id="mt-id">
-          <div class="field"><label class="field__label">Template Name</label><input type="text" class="field__input" id="mt-name" placeholder="e.g. Intro Email"></div>
-          <div class="field"><label class="field__label">Subject</label><input type="text" class="field__input" id="mt-subject" placeholder="e.g. Following up on {{company}}"></div>
-          <div class="field"><label class="field__label">Body (Variables: {{company}}, {{contactName}})</label><textarea class="field__input" id="mt-body" rows="8" placeholder="Hi {{contactName}}, ..."></textarea></div>
-          <div style="display:flex; justify-content:space-between; margin-top:24px;">
+        
+        <!-- Right Side: Edit / Preview -->
+        <div style="flex:2; display: flex; flex-direction: column;">
+          <!-- Tabs Header -->
+          <div style="display: flex; gap: 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px; padding-bottom: 8px;">
+            <button id="mt-tab-edit" class="tab-btn active" onclick="setTemplateTab('edit')" style="background: none; border: none; font-size: 14px; font-weight: 600; cursor: pointer; color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 4px; transition: all 0.2s;">Editor</button>
+            <button id="mt-tab-preview" class="tab-btn" onclick="setTemplateTab('preview')" style="background: none; border: none; font-size: 14px; font-weight: 500; cursor: pointer; color: var(--text-muted); padding-bottom: 4px; transition: all 0.2s;">Live Preview</button>
+          </div>
+
+          <!-- Edit Pane -->
+          <div id="mt-editor-pane">
+            <input type="hidden" id="mt-id">
+            <div class="field"><label class="field__label">Template Name</label><input type="text" class="field__input" id="mt-name" placeholder="e.g. Intro Email"></div>
+            <div class="field"><label class="field__label">Subject</label><input type="text" class="field__input" id="mt-subject" placeholder="e.g. Following up on {{company}}" oninput="updateMailTemplatePreview()"></div>
+            
+            <!-- Variable Badges Panel -->
+            <div style="margin-bottom: 12px;">
+              <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-right: 6px; display: block; margin-bottom: 6px;">Insert Variable at cursor:</span>
+              <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                <button type="button" class="var-badge" onclick="insertVariableAtCursor('{{contactName}}')" title="Inserts client/lead contact name">Client Name</button>
+                <button type="button" class="var-badge" onclick="insertVariableAtCursor('{{company}}')" title="Inserts client company name">Company Name</button>
+                <button type="button" class="var-badge" onclick="insertVariableAtCursor('{{agentName}}')" title="Inserts your display name">Your Name</button>
+                <button type="button" class="var-badge" onclick="insertVariableAtCursor('{{agentEmail}}')" title="Inserts your email address">Your Email</button>
+              </div>
+            </div>
+
+            <div class="field"><label class="field__label">Body</label><textarea class="field__input" id="mt-body" rows="8" placeholder="Hi {{contactName}}, ..." oninput="updateMailTemplatePreview()"></textarea></div>
+          </div>
+
+          <!-- Live Preview Pane -->
+          <div id="mt-preview-pane" style="display: none; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; min-height: 280px; max-height: 350px; overflow-y: auto; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+            <div style="border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 12px;">
+              <div style="font-size: 12px; margin-bottom: 4px; color: var(--text-muted);"><strong style="color: var(--text-muted)">From:</strong> <span id="mt-prev-from" style="color: var(--text)">You &lt;your-email@company.com&gt;</span></div>
+              <div style="font-size: 12px; margin-bottom: 4px; color: var(--text-muted);"><strong style="color: var(--text-muted)">To:</strong> <span style="color: var(--text)">John Doe &lt;johndoe@example.com&gt;</span></div>
+              <div style="font-size: 13px; font-weight: 600; margin-top: 8px; color: var(--text-muted);"><strong style="color: var(--text-muted)">Subject:</strong> <span id="mt-prev-subject" style="color: var(--text); font-weight: 600;">(No Subject)</span></div>
+            </div>
+            <div id="mt-prev-body" style="font-size: 13px; line-height: 1.6; white-space: pre-wrap; color: var(--text); font-family: var(--sans);"></div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; margin-top:20px;">
             <button class="btn btn--secondary" onclick="deleteMailTemplate()" style="color:var(--rose); border-color:var(--rose)">Delete</button>
             <button class="btn btn--primary" onclick="saveMailTemplate()">Save Template</button>
           </div>
@@ -11668,6 +11728,39 @@
 
     initApp();
 
+    function mergeLocalAndServerMessages(serverMessages, localMessages) {
+      const serverMsgMap = new Map();
+      (serverMessages || []).forEach(m => {
+        if (m && m.id) serverMsgMap.set(m.id, m);
+      });
+
+      const merged = [...(serverMessages || [])];
+
+      (localMessages || []).forEach(localMsg => {
+        if (!localMsg || !localMsg.id) return;
+        if (!serverMsgMap.has(localMsg.id)) {
+          if (localMsg.deliveryStatus === 'pending' || localMsg.deliveryStatus === 'queued' || localMsg.fromId === currentUserId) {
+            merged.push(localMsg);
+          }
+        } else {
+          const serverMsg = serverMsgMap.get(localMsg.id);
+          if (localMsg.deliveryStatus === 'pending' || localMsg.deliveryStatus === 'queued') {
+            serverMsg.deliveryStatus = 'delivered';
+          }
+        }
+      });
+
+      merged.sort((a, b) => (a.time || 0) - (b.time || 0));
+
+      const seenIds = new Set();
+      return merged.filter(m => {
+        if (!m || !m.id) return false;
+        if (seenIds.has(m.id)) return false;
+        seenIds.add(m.id);
+        return true;
+      });
+    }
+
     async function reloadDBFromDisk() {
       try {
         const token = sessionStorage.getItem('crm-session-token');
@@ -11685,7 +11778,7 @@
         db.deletedMeetingIds = Array.from(new Set([...(db.deletedMeetingIds || []), ...(fresh.deletedMeetingIds || [])]));
         db.meetings = (fresh.meetings || []).filter(m => !db.deletedMeetingIds.includes(m.id));
         db.projects = fresh.projects || []; db.activity = fresh.activity || []; db.notifications = fresh.notifications || [];
-        db.messages = fresh.messages || []; db.chatGroups = fresh.chatGroups || []; db.spreadsheets = fresh.spreadsheets || []; db.notes = fresh.notes || []; db.attendance = fresh.attendance || [];
+        db.messages = mergeLocalAndServerMessages(fresh.messages, db.messages); db.chatGroups = fresh.chatGroups || []; db.spreadsheets = fresh.spreadsheets || []; db.notes = fresh.notes || []; db.attendance = fresh.attendance || [];
         renderAll();
         renderChat();
         if (currentSSId) renderSpreadsheetEditor();
@@ -13440,6 +13533,8 @@
     let _mailConfigured = false;     // whether user has saved Zoho credentials
     let _mailSyncing = false;     // guard against parallel syncs
     let _composeAttachments = [];     // [{filename, mimeType, sizeBytes, base64}] for the current compose draft
+    let _editingDraftId = null;
+    let _replyingToMailId = null;
 
     /* ---- helpers ---- */
     function apiHeaders() {
@@ -13568,7 +13663,7 @@
       }
 
       try {
-        const r = await fetch(`/api/mail/sync?folder=${encodeURIComponent(folder)}`, {
+        const r = await fetch(`/api/mail/inbox?folder=${encodeURIComponent(folder)}`, {
           headers: apiHeaders(),
         });
         const json = await r.json();
@@ -13592,15 +13687,8 @@
         updateMailInboxBadge();
         renderMailList();
       } catch (e) {
-        if (e.message && e.message.includes('not configured')) {
-          // Prompt user to go to settings
-          if (container) {
-            container.innerHTML = '<div class="mail-empty-list">Mail account not configured.<br><button class="btn btn--secondary btn--sm" style="margin-top:8px" onclick="mailGoFolder(\'settings\')">Go to Settings</button></div>';
-          }
-        } else {
-          showToast('Sync error: ' + e.message, 'error');
-          if (container) container.innerHTML = '<div class="mail-empty-list">Failed to load emails.</div>';
-        }
+        showToast('Sync error: ' + e.message, 'error');
+        if (container) container.innerHTML = '<div class="mail-empty-list">Failed to load emails.</div>';
       } finally {
         _mailSyncing = false;
       }
@@ -13663,6 +13751,23 @@
       _selectedMailFolder = folder;
       const mail = _liveMails.find(m => m.id === id && m.folder === folder);
       if (!mail) return;
+
+      if (folder === 'drafts') {
+        mailOpenCompose();
+        _editingDraftId = id;
+        document.getElementById('mail-to').value = mail.to || '';
+        document.getElementById('mail-cc').value = mail.cc || '';
+        document.getElementById('mail-subject').value = mail.subject || '';
+        document.getElementById('mail-body').value = mail.body || '';
+        _composeAttachments = (mail.attachments || []).map(a => ({
+          filename: a.filename,
+          mimeType: a.contentType,
+          sizeBytes: a.size || 0,
+          base64: a.content || ''
+        }));
+        renderComposeAttachments();
+        return;
+      }
 
       // Mark as read locally immediately so unread dot disappears
       if (mail.unread) {
@@ -13746,6 +13851,8 @@
 
     /* ---- compose ---- */
     function mailOpenCompose() {
+      _editingDraftId = null;
+      _replyingToMailId = null;
       ['mail-to', 'mail-cc', 'mail-subject', 'mail-body'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
@@ -13837,16 +13944,36 @@
           contentType: a.mimeType,
           content: a.base64,
         }));
-        const r = await fetch('/api/mail/send', {
+        
+        const endpoint = _replyingToMailId ? '/api/mail/reply' : '/api/mail/send';
+        const payload = _replyingToMailId 
+          ? { replyToId: _replyingToMailId, to, cc, subject, body, attachments }
+          : { to, cc, subject, body, attachments };
+
+        const r = await fetch(endpoint, {
           method: 'POST',
           headers: apiHeaders(),
-          body: JSON.stringify({ to, cc, subject, body, attachments }),
+          body: JSON.stringify(payload),
         });
         const json = await r.json();
         if (!r.ok) throw new Error(json.error || 'Send failed');
 
         showToast('Email sent successfully!', 'success');
         _composeAttachments = [];
+        
+        // Delete the draft from server if we sent from a draft
+        if (_editingDraftId) {
+          const draftIdToDelete = _editingDraftId;
+          _editingDraftId = null;
+          fetch(`/api/mail/drafts/${draftIdToDelete}`, {
+            method: 'DELETE',
+            headers: apiHeaders()
+          }).catch(() => {});
+          _liveMails = _liveMails.filter(m => m.id !== draftIdToDelete);
+        }
+
+        _replyingToMailId = null;
+
         // Sync Sent folder to reflect new message
         _liveMails = _liveMails.filter(m => m.folder !== 'sent');
         mailGoFolder('sent');
@@ -13857,10 +13984,51 @@
       }
     }
 
-    /* ---- draft (local only — no IMAP APPEND yet) ---- */
-    function mailSaveDraft() {
-      showToast('Draft saving is not yet supported with live accounts.', 'info');
-      mailGoFolder('drafts');
+    /* ---- draft (local Supabase sync) ---- */
+    async function mailSaveDraft() {
+      const to = document.getElementById('mail-to').value.trim();
+      const cc = document.getElementById('mail-cc').value.trim();
+      const subject = document.getElementById('mail-subject').value.trim();
+      const body = document.getElementById('mail-body').value;
+
+      const saveBtn = document.querySelector('#mail-compose .btn--ghost');
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+
+      try {
+        const attachments = _composeAttachments.map(a => ({
+          filename: a.filename,
+          contentType: a.mimeType,
+          content: a.base64,
+        }));
+        
+        const payload = {
+          id: _editingDraftId || undefined,
+          to,
+          cc,
+          subject,
+          body,
+          attachments,
+        };
+
+        const r = await fetch('/api/mail/drafts', {
+          method: 'POST',
+          headers: apiHeaders(),
+          body: JSON.stringify(payload),
+        });
+        const json = await r.json();
+        if (!r.ok) throw new Error(json.error || 'Draft save failed');
+
+        showToast('Draft saved successfully!', 'success');
+        _editingDraftId = json.draft.id;
+        
+        // Force refresh of drafts folder next time it loads
+        _liveMails = _liveMails.filter(m => m.folder !== 'drafts');
+        mailGoFolder('drafts');
+      } catch (e) {
+        showToast('Save draft failed: ' + e.message, 'error');
+      } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Draft'; }
+      }
     }
 
     /* ---- reply ---- */
@@ -13869,6 +14037,7 @@
       const mail = _liveMails.find(m => m.id === _selectedMailId && m.folder === _selectedMailFolder);
       if (!mail) return;
       mailOpenCompose();
+      _replyingToMailId = mail.id;
       document.getElementById('mail-to').value = mail.fromEmail;
       document.getElementById('mail-subject').value = 'Re: ' + (mail.subject || '');
       document.getElementById('mail-body').value =
@@ -13894,37 +14063,15 @@
         const json = await r.json();
         if (!r.ok) throw new Error(json.error || 'Failed to load settings');
 
-        _mailConfigured = json.configured;
-        // Always show the user's own login email — not editable
         const me = currentUser();
-        document.getElementById('mail-set-email').value = (me && me.email) ? me.email : (json.email || '');
         document.getElementById('mail-set-name').value = json.name || (me ? me.name : '');
-        document.getElementById('mail-set-replyto').value = json.replyto || '';
-        // password field: show placeholder if already configured
-        const pwEl = document.getElementById('mail-set-password');
-        if (pwEl) {
-          pwEl.value = '';
-          pwEl.placeholder = json.configured ? 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢ (saved — enter new to change)' : '16-character app password from Zoho';
-        }
-        updateConnectionPill(json.configured);
       } catch (e) {
         console.warn('loadMailSettings:', e.message);
-        // Still pre-fill email from logged-in user even if API fails
-        const me = currentUser();
-        if (me && me.email) document.getElementById('mail-set-email').value = me.email;
-        updateConnectionPill(false);
       }
     }
 
     async function mailSaveSettings() {
-      const email = document.getElementById('mail-set-email').value.trim();
-      const password = document.getElementById('mail-set-password').value;
       const name = document.getElementById('mail-set-name').value.trim();
-      const replyto = document.getElementById('mail-set-replyto').value.trim();
-
-      if (!email) { showToast('Please enter your Zoho email address.', 'error'); return; }
-      // Send '__KEEP__' sentinel if password field is blank (user didn't change it)
-      const passwordPayload = password || '__KEEP__';
 
       const saveBtn = document.querySelector('#mail-settings .btn--primary');
       if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
@@ -13932,13 +14079,11 @@
         const r = await fetch('/api/mail/settings', {
           method: 'POST',
           headers: apiHeaders(),
-          body: JSON.stringify({ email, password: passwordPayload, name, replyto }),
+          body: JSON.stringify({ name }),
         });
         const json = await r.json();
         if (!r.ok) throw new Error(json.error || 'Failed to save settings');
-        showToast('Zoho settings saved securely.', 'success');
-        _mailConfigured = true;
-        // Reload to show placeholder in password field
+        showToast('Mail settings saved successfully.', 'success');
         loadMailSettings();
       } catch (e) {
         showToast('Save failed: ' + e.message, 'error');
@@ -13947,49 +14092,8 @@
       }
     }
 
-    async function mailTestConnection() {
-      const email = document.getElementById('mail-set-email').value.trim();
-      const password = document.getElementById('mail-set-password').value;
-
-      // If no new password entered and already configured, test using saved creds
-      if (!email && !_mailConfigured) {
-        showToast('Please fill in your email first.', 'error'); return;
-      }
-      // If user typed a new password, save first then test
-      if (password) {
-        await mailSaveSettings();
-      }
-
-      showToast('Testing IMAP connection to Zoho...', 'info');
-      const testBtn = document.querySelector('#mail-settings .btn--secondary');
-      if (testBtn) { testBtn.disabled = true; testBtn.textContent = 'Testing...'; }
-      try {
-        const r = await fetch('/api/mail/test-connection', {
-          method: 'POST',
-          headers: apiHeaders(),
-        });
-        const json = await r.json();
-        if (!r.ok) throw new Error(json.error || 'Connection failed');
-        showToast('IMAP connection verified! ✅', 'success');
-        updateConnectionPill(true);
-      } catch (e) {
-        showToast('Connection failed: ' + e.message, 'error');
-        updateConnectionPill(false);
-      } finally {
-        if (testBtn) { testBtn.disabled = false; testBtn.textContent = 'Test Connection'; }
-      }
-    }
-
     function updateConnectionPill(isConfigured) {
-      const pill = document.getElementById('mail-set-status');
-      if (!pill) return;
-      if (isConfigured) {
-        pill.className = 'mail-status-pill connected';
-        pill.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Connected`;
-      } else {
-        pill.className = 'mail-status-pill not-configured';
-        pill.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Not configured`;
-      }
+      // No-op (removed IMAP status indicator)
     }
 
     function renderChat() {
@@ -14675,15 +14779,18 @@
       if (ep) ep.classList.remove('is-open');
       const eb = document.getElementById('chat-emoji-btn-' + safeId);
       if (eb) eb.classList.remove('is-active');
+      cacheDbLocally();
       renderChat();
       try {
         await saveDB(false);
         message.deliveryStatus = 'delivered';
+        cacheDbLocally();
         renderChat();
       } catch (error) {
         message.deliveryStatus = 'queued';
+        cacheDbLocally();
         renderChat();
-        showToast('Message was not sent. Please try again.', 'error');
+        showToast('Message queued locally (offline / slow network).', 'info');
       }
     }
 
@@ -16085,8 +16192,20 @@
         else if (client) { company = client.name; contactName = client.contactName || 'there'; }
       }
 
-      subject = subject.replace(/{{company}}/g, company).replace(/{{contactName}}/g, contactName);
-      body = body.replace(/{{company}}/g, company).replace(/{{contactName}}/g, contactName);
+      const agent = currentUser() || {};
+      const agentName = agent.name || '';
+      const agentEmail = agent.email || '';
+
+      subject = subject
+        .replace(/{{company}}/g, company)
+        .replace(/{{contactName}}/g, contactName)
+        .replace(/{{agentName}}/g, agentName)
+        .replace(/{{agentEmail}}/g, agentEmail);
+      body = body
+        .replace(/{{company}}/g, company)
+        .replace(/{{contactName}}/g, contactName)
+        .replace(/{{agentName}}/g, agentName)
+        .replace(/{{agentEmail}}/g, agentEmail);
 
       document.getElementById('mail-subject').value = subject;
       document.getElementById('mail-body').value = body;
@@ -16095,9 +16214,21 @@
     function renderMailTemplatesList() {
       const ul = document.getElementById('mt-list');
       if (!ul) return;
-      ul.innerHTML = (db.mailTemplates || []).map(t =>
-        '<li style="padding:8px; border:1px solid var(--border); border-radius:4px; margin-bottom:8px; cursor:pointer;" onclick="editMailTemplate(\'' + t.id + '\')">' + escapeHtml(t.name) + '</li>'
-      ).join('');
+      
+      const currentId = document.getElementById('mt-id').value;
+      const query = (document.getElementById('mt-search')?.value || '').toLowerCase();
+      const filtered = (db.mailTemplates || []).filter(t => 
+        t.name.toLowerCase().includes(query) || 
+        (t.subject || '').toLowerCase().includes(query)
+      );
+
+      ul.innerHTML = filtered.map(t => {
+        const isActive = t.id === currentId ? 'active' : '';
+        return `<li class="template-item ${isActive}" onclick="editMailTemplate('${t.id}')">
+          <div class="template-item__name">${escapeHtml(t.name)}</div>
+          <div class="template-item__subject">${escapeHtml(t.subject || '(No Subject)')}</div>
+        </li>`;
+      }).join('');
     }
 
     function newMailTemplate() {
@@ -16105,6 +16236,8 @@
       document.getElementById('mt-name').value = '';
       document.getElementById('mt-subject').value = '';
       document.getElementById('mt-body').value = '';
+      setTemplateTab('edit');
+      renderMailTemplatesList();
     }
 
     function editMailTemplate(id) {
@@ -16112,8 +16245,10 @@
       if (!t) return;
       document.getElementById('mt-id').value = t.id;
       document.getElementById('mt-name').value = t.name;
-      document.getElementById('mt-subject').value = t.subject;
-      document.getElementById('mt-body').value = t.body;
+      document.getElementById('mt-subject').value = t.subject || '';
+      document.getElementById('mt-body').value = t.body || '';
+      setTemplateTab('edit');
+      renderMailTemplatesList();
     }
 
     function saveMailTemplate() {
@@ -16154,9 +16289,106 @@
     }
 
     function openMailTemplateModal() {
+      const searchInput = document.getElementById('mt-search');
+      if (searchInput) searchInput.value = '';
       renderMailTemplatesList();
       newMailTemplate();
       openModal('modal-mail-templates');
+    }
+
+    /* Tabs and Variable insertion functionality */
+    function setTemplateTab(tab) {
+      const editBtn = document.getElementById('mt-tab-edit');
+      const prevBtn = document.getElementById('mt-tab-preview');
+      const editPane = document.getElementById('mt-editor-pane');
+      const prevPane = document.getElementById('mt-preview-pane');
+      if (!editBtn || !prevBtn || !editPane || !prevPane) return;
+      
+      if (tab === 'edit') {
+        editBtn.classList.add('active');
+        editBtn.style.color = 'var(--accent)';
+        editBtn.style.borderBottom = '2px solid var(--accent)';
+        
+        prevBtn.classList.remove('active');
+        prevBtn.style.color = 'var(--text-muted)';
+        prevBtn.style.borderBottom = 'none';
+        
+        editPane.style.display = 'block';
+        prevPane.style.display = 'none';
+      } else {
+        prevBtn.classList.add('active');
+        prevBtn.style.color = 'var(--accent)';
+        prevBtn.style.borderBottom = '2px solid var(--accent)';
+        
+        editBtn.classList.remove('active');
+        editBtn.style.color = 'var(--text-muted)';
+        editBtn.style.borderBottom = 'none';
+        
+        editPane.style.display = 'none';
+        prevPane.style.display = 'block';
+        
+        updateMailTemplatePreview();
+      }
+    }
+
+    function insertVariableAtCursor(variableText) {
+      const subjectEl = document.getElementById('mt-subject');
+      const bodyEl = document.getElementById('mt-body');
+      if (!subjectEl || !bodyEl) return;
+      
+      let activeEl = document.activeElement;
+      if (activeEl !== subjectEl && activeEl !== bodyEl) {
+        activeEl = bodyEl;
+      }
+      
+      const startPos = activeEl.selectionStart;
+      const endPos = activeEl.selectionEnd;
+      const val = activeEl.value;
+      
+      activeEl.value = val.substring(0, startPos) + variableText + val.substring(endPos);
+      activeEl.focus();
+      const newCursorPos = startPos + variableText.length;
+      activeEl.setSelectionRange(newCursorPos, newCursorPos);
+      
+      updateMailTemplatePreview();
+    }
+
+    function updateMailTemplatePreview() {
+      const subjectVal = document.getElementById('mt-subject')?.value || '';
+      const bodyVal = document.getElementById('mt-body')?.value || '';
+      
+      const me = currentUser() || { name: 'Your Name', email: 'your-email@company.com' };
+      const agentName = me.name || 'Your Name';
+      const agentEmail = me.email || 'your-email@company.com';
+      
+      const dummyClient = {
+        contactName: 'John Doe',
+        company: 'Acme Corp'
+      };
+      
+      let prevSubject = subjectVal || '(No Subject)';
+      let prevBody = bodyVal || '';
+      
+      const replacements = {
+        contactName: dummyClient.contactName,
+        company: dummyClient.company,
+        agentName: agentName,
+        agentEmail: agentEmail
+      };
+      
+      for (const [k, v] of Object.entries(replacements)) {
+        const regex = new RegExp('{{\\s*' + k + '\\s*}}', 'g');
+        prevSubject = prevSubject.replace(regex, v);
+        prevBody = prevBody.replace(regex, v);
+      }
+      
+      const prevFromEl = document.getElementById('mt-prev-from');
+      const prevSubEl = document.getElementById('mt-prev-subject');
+      const prevBodyEl = document.getElementById('mt-prev-body');
+      
+      if (prevFromEl) prevFromEl.textContent = `${agentName} <${agentEmail}>`;
+      if (prevSubEl) prevSubEl.textContent = prevSubject;
+      if (prevBodyEl) prevBodyEl.textContent = prevBody;
     }
 
     window._lastAssetCountsStr = '';
@@ -20261,54 +20493,37 @@
         m.classList.remove('is-open');
         await saveTeamChange('Team member updated successfully.');
       } else {
-        // Force new members to be Invited by default (email invite flow)
-        status = 'Invited';
-        const tmpPassword = '0000';
-        const member = { 
-          id: uid('mem'), 
-          name, 
-          email, 
-          role, 
-          payRate, 
-          status, 
-          avatar: getNextAvatarClass(), 
-          initials: initialsOf(name), 
-          added: now(), 
-          password: tmpPassword, 
-          mustChangePassword: true,
-          profileSetupRequired: true,
-          location,
-          birthday,
-          sex,
-          personalEmail,
-          mobileNumber,
-          companyMail,
-          level
+        // Use the dedicated team addition backend endpoint to handle unique mailbox generation, saving, and invites
+        const payload = {
+          name, email, role, payRate,
+          location, birthday, sex, personalEmail,
+          mobileNumber, companyMail, level
         };
-        db.team.push(member);
+        const token = sessionStorage.getItem('crm-session-token');
+        
         m.querySelectorAll('input').forEach(el => el.value = '');
         m.querySelector('.i-role').disabled = false;
         m.querySelector('.i-status').disabled = false;
         m.classList.remove('is-open');
-        persistAndRender([renderTeam, renderOverview, populateDropdowns]);
 
         try {
-          const token = sessionStorage.getItem('crm-session-token');
-          const res = await fetch(API_BASE + '/api/send-invite-email', {
+          const res = await fetch(API_BASE + '/api/team/add', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-session-token': token || '' },
-            body: JSON.stringify({ toName: name, toEmail: email, password: tmpPassword })
+            body: JSON.stringify(payload)
           });
           const data = await res.json();
-          if (data.skipped) {
-            showToast('Member added. (No email sent — SMTP not configured in .env)', 'warning');
-          } else if (res.ok) {
-            showToast('Member added and welcome email sent to ' + email + '!', 'success');
-          } else {
-            showToast('Member added but email failed: ' + (data.error || 'Unknown error'), 'error');
-          }
+          if (!res.ok) throw new Error(data.error || 'Failed to add team member');
+
+          showToast('Member added and welcome email sent successfully!', 'success');
+          // Add to local DB cache and trigger re-render
+          db.team.push(data.member);
+          renderTeam();
+          renderOverview();
+          populateDropdowns();
         } catch (err) {
-          showToast('Member added but could not send email: ' + err.message, 'error');
+          showToast('Failed to add member: ' + err.message, 'error');
+          await reloadDBFromDisk();
         }
       }
     }

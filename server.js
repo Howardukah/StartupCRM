@@ -12,6 +12,7 @@ import nodemailer from 'nodemailer';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { createClient } from '@supabase/supabase-js';
+import { Resend } from 'resend';
 import { createRequire } from 'module';
 import fs from 'fs/promises';
 import bcrypt from 'bcryptjs';
@@ -63,7 +64,12 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth/', authLimiter);
 
-app.use(express.json({ limit: '30mb' })); // 20MB attachment limit -> ~27MB once base64-encoded, plus headroom
+app.use(express.json({
+  limit: '30mb',
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 
 // ── Security: Static file protection ───────────────────────────────────
 // Only serve files from the public/ subdirectory. This prevents direct URL
@@ -487,6 +493,55 @@ function reconcileUserCollection(serverList, clientList, userId, visibleFn) {
   return result;
 }
 
+function generateUniqueMailboxAddress(name, existingAddresses) {
+  let base = (name || '').toLowerCase()
+    .replace(/[^a-z0-9]/g, '.')
+    .replace(/\.+/g, '.')
+    .replace(/^\.|\.$/g, '');
+  if (!base) base = 'user';
+  
+  const domain = 'startupbuild.tech';
+  let candidate = `${base}@${domain}`;
+  let counter = 1;
+  while (existingAddresses.has(candidate)) {
+    candidate = `${base}${counter}@${domain}`;
+    counter++;
+  }
+  return candidate;
+}
+
+async function migrateMailboxAddresses() {
+  try {
+    const data = await getCrmData();
+    let changed = false;
+    const team = data.team || [];
+    const used = new Set();
+    
+    for (const m of team) {
+      if (m && m.mailboxAddress) {
+        used.add(m.mailboxAddress.toLowerCase());
+      }
+    }
+    
+    for (const m of team) {
+      if (m && !m.mailboxAddress) {
+        const addr = generateUniqueMailboxAddress(m.name, used);
+        m.mailboxAddress = addr;
+        used.add(addr.toLowerCase());
+        changed = true;
+        console.log(`📧 Migrated team member ${m.name} -> Assigned mailboxAddress: ${addr}`);
+      }
+    }
+    
+    if (changed) {
+      await setCrmData(data);
+      console.log('✅ Team mailboxAddress migration complete and saved to Supabase.');
+    }
+  } catch (e) {
+    console.error('⚠️ Failed to run mailboxAddress migration on startup:', e.message);
+  }
+}
+
 /* ── Supabase client ─────────────────────────────────────────────────── */
 async function initSupabase() {
   const url = process.env.SUPABASE_URL;
@@ -683,6 +738,179 @@ app.post('/api/auth/setup', async (req, res) => {
 // Login — validates credentials, issues session token
 // Simple in-memory brute-force guard: 5 failed attempts per identifier
 // locks that identifier out for 15 minutes.
+// POST /webhooks/inbound-mail — verify signatures using Resend SDK, and sync received mail to table
+app.post('/webhooks/inbound-mail', async (req, res) => {
+  try {
+    const payload = req.rawBody ? req.rawBody.toString() : '';
+    const headers = {
+      'svix-id': req.headers['svix-id'],
+      'svix-timestamp': req.headers['svix-timestamp'],
+      'svix-signature': req.headers['svix-signature']
+    };
+    const secret = process.env.RESEND_WEBHOOK_SECRET;
+
+    if (!headers['svix-id'] || !headers['svix-timestamp'] || !headers['svix-signature']) {
+      return res.status(400).json({ error: 'Missing Svix headers' });
+    }
+
+    if (!secret) {
+      console.error('⚠️ RESEND_WEBHOOK_SECRET is not configured on the server.');
+      return res.status(500).json({ error: 'Webhook secret is not configured' });
+    }
+
+    const resend = new Resend(process.env.RESEND_MAILBOX_KEY || 'dummy_key');
+    let isValid = false;
+    try {
+      isValid = await resend.webhooks.verify({
+        payload,
+        headers,
+        secret
+      });
+    } catch (e) {
+      console.warn('Webhook verification check failed:', e.message);
+    }
+
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    const webhookData = req.body;
+    if (webhookData.type !== 'email.received') {
+      return res.json({ ok: true, message: 'Ignored non-received event type' });
+    }
+
+    const emailId = webhookData.data.email_id;
+    if (!emailId) {
+      return res.status(400).json({ error: 'Missing email_id in event data' });
+    }
+
+    const mailboxKey = process.env.RESEND_MAILBOX_KEY;
+    if (!mailboxKey) {
+      return res.status(500).json({ error: 'RESEND_MAILBOX_KEY is not configured on the server.' });
+    }
+
+    const emailFetchRes = await fetch(`https://api.resend.com/emails/receiving/${emailId}`, {
+      headers: {
+        'Authorization': `Bearer ${mailboxKey}`
+      }
+    });
+
+    if (!emailFetchRes.ok) {
+      const errBody = await emailFetchRes.json().catch(() => ({}));
+      console.error('Failed to retrieve email content from Resend:', errBody);
+      return res.status(502).json({ error: errBody.message || 'Failed to fetch email from Resend.' });
+    }
+
+    const emailData = await emailFetchRes.json();
+
+    let fromName = '';
+    let fromEmail = emailData.from || '';
+    if (emailData.headers && emailData.headers.from) {
+      const match = emailData.headers.from.match(/^(?:"?([^"]*)"?\s)?<([^>]+)>/);
+      if (match) {
+        fromName = match[1] || '';
+        fromEmail = match[2] || fromEmail;
+      } else {
+        fromName = emailData.headers.from.split('<')[0].trim().replace(/^"/, '').replace(/"$/, '');
+      }
+    }
+
+    const crmData = await getCrmData();
+    const team = crmData.team || [];
+    
+    const recipients = new Set();
+    const addClean = (arr) => {
+      (arr || []).forEach(emailStr => {
+        if (!emailStr) return;
+        const clean = emailStr.replace(/^.*<|>/g, '').trim().toLowerCase();
+        recipients.add(clean);
+      });
+    };
+    addClean(emailData.to);
+    addClean(emailData.cc);
+    addClean(emailData.bcc);
+    addClean(emailData.received_for);
+
+    const matchingMembers = team.filter(m => 
+      m && m.mailboxAddress && recipients.has(m.mailboxAddress.toLowerCase())
+    );
+
+    if (matchingMembers.length === 0) {
+      console.warn(`📧 Received inbound mail for ${Array.from(recipients).join(', ')} but no matching team member found.`);
+      return res.json({ ok: true, warning: 'No matching team member mailbox found.' });
+    }
+
+    const attachmentsMetadata = [];
+    for (const att of emailData.attachments || []) {
+      try {
+        const attDetailRes = await fetch(`https://api.resend.com/emails/receiving/${emailId}/attachments/${att.id}`, {
+          headers: { 'Authorization': `Bearer ${mailboxKey}` }
+        });
+        if (attDetailRes.ok) {
+          const attDetail = await attDetailRes.json();
+          if (attDetail.download_url) {
+            const fileRes = await fetch(attDetail.download_url);
+            if (fileRes.ok) {
+              const fileBuffer = await fileRes.arrayBuffer();
+              const uniqueFileName = `${Date.now()}_${att.filename}`;
+              const storagePath = `mail_attachments/${uniqueFileName}`;
+              await uploadToB2(storagePath, Buffer.from(fileBuffer), att.content_type || 'application/octet-stream');
+              
+              attachmentsMetadata.push({
+                filename: att.filename,
+                storagePath,
+                contentType: att.content_type || 'application/octet-stream',
+                size: att.size || fileBuffer.byteLength
+              });
+              console.log(`📎 Uploaded inbound attachment to B2: ${storagePath}`);
+            }
+          }
+        }
+      } catch (attErr) {
+        console.error(`⚠️ Failed to process attachment ${att.filename}:`, attErr.message);
+      }
+    }
+
+    const inboundRows = matchingMembers.map(member => ({
+      user_id: member.id,
+      message_id: emailData.message_id || emailId,
+      folder: 'inbox',
+      from_name: fromName || null,
+      from_email: fromEmail,
+      to_email: (emailData.to || []).join(', '),
+      cc: (emailData.cc || []).join(', ') || null,
+      subject: emailData.subject || '(No Subject)',
+      body: emailData.text || '',
+      html: emailData.html || '',
+      attachments: attachmentsMetadata,
+      unread: true,
+      in_reply_to: emailData.headers?.['in-reply-to'] || null,
+      references_header: emailData.headers?.references || null,
+      created_at: emailData.created_at || new Date().toISOString()
+    }));
+
+    const { error: insertErr } = await supabase
+      .from('mailbox_emails')
+      .upsert(inboundRows, { onConflict: 'user_id,message_id' });
+
+    if (insertErr) {
+      console.error('Error inserting inbound mail into Supabase:', insertErr);
+      return res.status(500).json({ error: insertErr.message });
+    }
+
+    console.log(`📧 Webhook successfully processed. Handled mail for ${matchingMembers.map(m => m.name).join(', ')}`);
+
+    matchingMembers.forEach(member => {
+      io.emit('db_changed', { type: 'mail', userId: member.id });
+    });
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('POST /webhooks/inbound-mail error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 const loginAttempts = new Map();
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
@@ -1275,6 +1503,131 @@ app.get('/api/activity', activityLimiter, validateSession, async (req, res) => {
   }
 });
 
+// POST /api/team/add — dedicated endpoint for adding a new team member
+app.post('/api/team/add', validateSession, async (req, res) => {
+  try {
+    const current = await getCrmData();
+    const me = (current.team || []).find(m => m.id === req.userId);
+    const role = me ? me.role : null;
+    if (!hasPermission(role, 'canManageTeam')) {
+      return res.status(403).json({ error: 'Only Admins or HR can add team members.' });
+    }
+
+    const {
+      name, email, role: targetRole, payRate,
+      location, birthday, sex, personalEmail,
+      mobileNumber, companyMail, level
+    } = req.body || {};
+
+    if (!name || !email) {
+      return res.status(400).json({ error: 'Name and email are required.' });
+    }
+
+    const emailLower = email.trim().toLowerCase();
+    const emailExists = (current.team || []).some(m => m && m.email && m.email.toLowerCase() === emailLower);
+    if (emailExists) {
+      return res.status(400).json({ error: `A team member with email ${email} already exists.` });
+    }
+
+    const used = new Set();
+    for (const m of current.team || []) {
+      if (m && m.mailboxAddress) used.add(m.mailboxAddress.toLowerCase());
+    }
+
+    const mailboxAddress = generateUniqueMailboxAddress(name, used);
+    const tmpPassword = '0000';
+    const newMember = {
+      id: 'mem_' + Math.random().toString(36).substr(2, 9),
+      name: name.trim(),
+      email: emailLower,
+      mailboxAddress,
+      role: targetRole || 'Engineer',
+      payRate: payRate || 0,
+      status: 'Invited',
+      avatar: 'avatar-purple',
+      initials: (name || '').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '??',
+      added: new Date().toISOString(),
+      password: tmpPassword,
+      mustChangePassword: true,
+      profileSetupRequired: true,
+      location: location || '',
+      birthday: birthday || '',
+      sex: sex || '',
+      personalEmail: personalEmail || '',
+      mobileNumber: mobileNumber || '',
+      companyMail: companyMail || '',
+      level: level || ''
+    };
+
+    if (!current.team) current.team = [];
+    current.team.push(newMember);
+
+    await setCrmData(current);
+    console.log(`👤 Team member ${name} created with mailbox: ${mailboxAddress}`);
+
+    const appUrl = process.env.APP_URL || 'https://crm.startupbuild.tech';
+    const loginUrl = appUrl.replace(/\/$/, '') + '/';
+    const fromName = process.env.SMTP_FROM_NAME || 'Startup CRM';
+    const fromAddr = 'noreply@startupbuild.tech';
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Welcome to Startup. - Your Account Login Details</title>
+</head>
+<body>
+<div class="email">
+  <div class="brand">Start<span>up.</span></div>
+  <div class="body">
+    <h1>Welcome to Startup.</h1>
+    <p>Hi <strong>${newMember.name}</strong>,</p>
+    <p>Welcome to the team! We're excited to have you on board at <strong>Startup</strong>.</p>
+    <p>Your account has been created and is ready to use. Here are your login details:</p>
+    <p style="background:#F9F9F8;padding:16px 20px;border-radius:8px;border:1px solid #EAEAE4;line-height:1.8;">
+      <strong>Login Email:</strong> <span style="color:#12A3B4;font-weight:700;">${newMember.email}</span><br>
+      <strong>Mailbox Address:</strong> <span style="color:#12A3B4;font-weight:700;">${newMember.mailboxAddress}</span><br>
+      <strong>Temporary Password:</strong> <span style="font-family:monospace;font-weight:700;background:rgba(18,163,180,0.08);padding:3px 8px;border-radius:4px;">${tmpPassword}</span>
+    </p>
+    <p>Please log in and change your password immediately after your first sign-in.</p>
+    <p style="margin:24px 0 20px;">
+      <a href="${loginUrl}" target="_blank" style="display:inline-block;background:#12A3B4;color:#ffffff !important;text-decoration:none;padding:14px 28px;border-radius:6px;font-weight:700;font-size:14px;">Open Dashboard &rarr;</a>
+    </p>
+  </div>
+</div>
+</body>
+</html>`;
+
+    const inviteKey = process.env.RESEND_NOREPLY_KEY || process.env.RESEND_API_KEY;
+    if (inviteKey) {
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${inviteKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: `${fromName} <${fromAddr}>`,
+          to: [newMember.email],
+          subject: 'Welcome to Startup. - Your Account Login Details',
+          html
+        })
+      }).then(r => r.json().then(data => {
+        if (r.ok) console.log(`📧 Welcome email sent via Resend API to ${newMember.email}`);
+        else console.warn(`⚠️ Resend API returned error when sending invite:`, data);
+      })).catch(e => {
+        console.warn(`⚠️ Resend API fetch failed when sending invite:`, e.message);
+      });
+    }
+
+    io.emit('db_changed', { type: 'team', memberId: newMember.id });
+
+    res.json({ ok: true, member: newMember });
+  } catch (e) {
+    console.error('POST /api/team/add error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Atomic team access toggle. This avoids full-DB save races where a stale
 // browser copy can briefly restore the old member status after Suspend/Restore.
 app.post('/api/team/:memberId/suspension', validateSession, async (req, res) => {
@@ -1539,7 +1892,7 @@ function getMailer() {
 }
 
 async function sendViaResendApi(mailOptions) {
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = process.env.RESEND_NOREPLY_KEY || process.env.RESEND_API_KEY;
   if (!apiKey) return false;
   try {
     const fromAddr = process.env.RESEND_FROM_EMAIL || process.env.SMTP_USER || 'noreply@startupbuild.tech';
@@ -1941,46 +2294,32 @@ app.get('/api/test-email', async (req, res) => {
    â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â•  */
 
 /** Resolve the correct Zoho IMAP/SMTP host based on the user's email TLD. */
-function getZohoHosts(email) {
+function getZohoHostsMigration(email) {
   const lc = (email || '').toLowerCase();
-  if (lc.endsWith('.eu') || lc.includes('@zoho.eu')) return { imap: 'imap.zoho.eu', smtp: 'smtp.zoho.eu' };
-  if (lc.endsWith('.in') || lc.includes('@zoho.in') || lc.includes('.in>')) return { imap: 'imap.zoho.in', smtp: 'smtp.zoho.in' };
-
-  // Default fallback matching the main organization's Zoho SMTP host
-  const mainHost = (process.env.SMTP_HOST || 'smtp.zoho.com').toLowerCase();
-  if (mainHost.endsWith('.in')) {
-    return { imap: 'imap.zoho.in', smtp: 'smtp.zoho.in' };
-  }
-  if (mainHost.endsWith('.eu')) {
-    return { imap: 'imap.zoho.eu', smtp: 'smtp.zoho.eu' };
-  }
-  return { imap: 'imap.zoho.com', smtp: 'smtp.zoho.com' };
+  if (lc.endsWith('.eu') || lc.includes('@zoho.eu')) return 'imap.zoho.eu';
+  if (lc.endsWith('.in') || lc.includes('@zoho.in') || lc.includes('.in>')) return 'imap.zoho.in';
+  return 'imap.zoho.com';
 }
 
 /** Build an authenticated ImapFlow client from decrypted credentials. */
-function makeImapClient(email, password) {
-  const { imap } = getZohoHosts(email);
+function makeImapClient(host, port, email, password) {
   return new ImapFlow({
-    host: imap,
-    port: 993,
+    host: host || 'imap.secureserver.net',
+    port: parseInt(port || '993', 10),
     secure: true,
     auth: { user: email, pass: password },
     logger: false,
   });
 }
 
-// GET  /api/mail/settings  — return saved settings (password is masked/omitted)
+// GET  /api/mail/settings  — return saved settings (display name only)
 app.get('/api/mail/settings', validateSession, async (req, res) => {
   try {
     const data = await getCrmData();
-    const raw = ((data.zohoMailSettings || {})[req.userId]) || null;
-    if (!raw) return res.json({ configured: false, email: '', name: '', replyto: '' });
+    const raw = ((data.mailSettings || {})[req.userId]) || null;
+    if (!raw) return res.json({ name: '' });
     res.json({
-      configured: true,
-      email: raw.email || '',
       name: raw.name || '',
-      replyto: raw.replyto || '',
-      // password intentionally omitted — client shows a placeholder
     });
   } catch (e) {
     console.error('GET /api/mail/settings error:', e);
@@ -1988,26 +2327,14 @@ app.get('/api/mail/settings', validateSession, async (req, res) => {
   }
 });
 
-// POST /api/mail/settings  — save / update Zoho credentials (password encrypted)
+// POST /api/mail/settings  — save / update mail settings (display name only)
 app.post('/api/mail/settings', validateSession, async (req, res) => {
   try {
-    const { email, password, name, replyto } = req.body || {};
-    if (!email) return res.status(400).json({ error: 'email is required.' });
-
+    const { name } = req.body || {};
     const data = await getCrmData();
-    if (!data.zohoMailSettings) data.zohoMailSettings = {};
-
-    const existing = data.zohoMailSettings[req.userId] || {};
-    // If password is the sentinel placeholder or empty, keep the old encrypted one
-    const encryptedPass = (password && password !== '__KEEP__')
-      ? encryptField(password)
-      : (existing.encryptedPassword || '');
-
-    data.zohoMailSettings[req.userId] = {
-      email,
+    if (!data.mailSettings) data.mailSettings = {};
+    data.mailSettings[req.userId] = {
       name: name || '',
-      replyto: replyto || '',
-      encryptedPassword: encryptedPass,
     };
     await setCrmData(data);
     console.log(`📧 Mail settings saved for user ${req.userId}`);
@@ -2018,18 +2345,110 @@ app.post('/api/mail/settings', validateSession, async (req, res) => {
   }
 });
 
+// GET /api/mail/drafts — fetch drafts for the user
+app.get('/api/mail/drafts', validateSession, async (req, res) => {
+  try {
+    const data = await getCrmData();
+    const userDrafts = (data.mailDrafts || {})[req.userId] || [];
+    res.json(userDrafts);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/mail/drafts — save or update a draft
+app.post('/api/mail/drafts', validateSession, async (req, res) => {
+  try {
+    const { id, to, cc, subject, body, attachments } = req.body || {};
+    const data = await getCrmData();
+    if (!data.mailDrafts) data.mailDrafts = {};
+    if (!data.mailDrafts[req.userId]) data.mailDrafts[req.userId] = [];
+    
+    const drafts = data.mailDrafts[req.userId];
+    const draftId = id || 'draft_' + Math.random().toString(36).substr(2, 9);
+    
+    const newDraft = {
+      id: draftId,
+      folder: 'drafts',
+      fromName: '',
+      fromEmail: '',
+      to: to || '',
+      cc: cc || '',
+      subject: subject || '',
+      body: body || '',
+      unread: false,
+      attachments: attachments || [],
+      date: new Date().toISOString()
+    };
+
+    const member = (data.team || []).find(m => m.id === req.userId);
+    if (member) {
+      newDraft.fromName = member.name || '';
+      newDraft.fromEmail = member.email || '';
+    }
+    
+    const idx = drafts.findIndex(d => d.id === draftId);
+    if (idx > -1) {
+      drafts[idx] = newDraft;
+    } else {
+      drafts.push(newDraft);
+    }
+    
+    await setCrmData(data);
+    res.json({ ok: true, draft: newDraft });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/mail/drafts/:id — delete a draft
+app.delete('/api/mail/drafts/:id', validateSession, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = await getCrmData();
+    if (data.mailDrafts && data.mailDrafts[req.userId]) {
+      data.mailDrafts[req.userId] = data.mailDrafts[req.userId].filter(d => d.id !== id);
+      await setCrmData(data);
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/mail/test-connection  — verify IMAP credentials live
 app.post('/api/mail/test-connection', validateSession, async (req, res) => {
   try {
     const data = await getCrmData();
-    const saved = ((data.zohoMailSettings || {})[req.userId]) || null;
+    let saved = ((data.mailSettings || {})[req.userId]) || null;
+    
+    if (!saved && data.zohoMailSettings && data.zohoMailSettings[req.userId]) {
+      const old = data.zohoMailSettings[req.userId];
+      const imapHost = getZohoHostsMigration(old.email);
+      saved = {
+        email: old.email,
+        host: imapHost,
+        port: 993,
+        name: old.name || '',
+        replyto: old.replyto || '',
+        encryptedPassword: old.encryptedPassword
+      };
+      if (!data.mailSettings) data.mailSettings = {};
+      data.mailSettings[req.userId] = saved;
+      await setCrmData(data);
+    }
+
     if (!saved || !saved.encryptedPassword) {
       return res.status(400).json({ error: 'No credentials saved. Please save your settings first.' });
     }
     const password = decryptField(saved.encryptedPassword);
-    const client = makeImapClient(saved.email, password);
+    const client = makeImapClient(saved.host, saved.port, saved.email, password);
     await client.connect();
-    await client.logout();
+    try {
+      await client.selectMailbox('INBOX');
+    } finally {
+      await client.logout();
+    }
     res.json({ ok: true });
   } catch (e) {
     console.error('Test-connection error:', e.message);
@@ -2037,155 +2456,311 @@ app.post('/api/mail/test-connection', validateSession, async (req, res) => {
   }
 });
 
-// GET  /api/mail/sync?folder=inbox|sent|drafts  — fetch live emails via IMAP
-app.get('/api/mail/sync', validateSession, async (req, res) => {
+// GET  /api/mail/inbox?folder=inbox|sent|drafts  — fetch live emails from database
+app.get('/api/mail/inbox', validateSession, async (req, res) => {
   try {
     const folder = (req.query.folder || 'inbox').toLowerCase();
-    const data = await getCrmData();
-    const saved = ((data.zohoMailSettings || {})[req.userId]) || null;
-    if (!saved || !saved.encryptedPassword) {
-      return res.status(400).json({ error: 'Mail account not configured.' });
-    }
-    const password = decryptField(saved.encryptedPassword);
-    const client = makeImapClient(saved.email, password);
-    await client.connect();
-
-    // Map friendly folder names to IMAP mailbox names
-    const FOLDER_MAP = { inbox: 'INBOX', sent: 'Sent', drafts: 'Drafts' };
-    const imapFolder = FOLDER_MAP[folder] || 'INBOX';
-
-    const emails = [];
-    try {
-      const lock = await client.getMailboxLock(imapFolder);
-      try {
-        const total = client.mailbox.exists || 0;
-        if (total > 0) {
-          const start = Math.max(1, total - 49); // up to 50 most-recent
-          for await (const msg of client.fetch(`${start}:${total}`, { uid: true, flags: true, envelope: true, source: true })) {
-            try {
-              const parsed = await simpleParser(msg.source);
-              const fromAddr = parsed.from?.value?.[0] || {};
-              emails.push({
-                id: String(msg.uid),
-                folder,
-                fromName: fromAddr.name || fromAddr.address || 'Unknown',
-                fromEmail: fromAddr.address || '',
-                to: parsed.to?.text || '',
-                cc: parsed.cc?.text || '',
-                subject: parsed.subject || '(No Subject)',
-                date: parsed.date ? parsed.date.toISOString() : new Date().toISOString(),
-                body: parsed.text || (parsed.html ? parsed.html.replace(/<[^>]+>/g, ' ') : ''),
-                unread: !msg.flags.has('\\Seen'),
-                // Metadata only here — actual bytes are fetched on demand via /api/mail/attachment
-                // to avoid re-downloading every attachment just to render the inbox list.
-                attachments: (parsed.attachments || [])
-                  .filter(a => a.contentDisposition !== 'inline' || !a.cid) // skip inline signature/logo images
-                  .map((a, i) => ({
-                    index: i,
-                    filename: a.filename || `attachment-${i + 1}`,
-                    size: a.size || (a.content ? a.content.length : 0),
-                    contentType: a.contentType || 'application/octet-stream',
-                  })),
-              });
-            } catch { /* skip unparseable messages */ }
-          }
-        }
-      } finally {
-        lock.release();
-      }
-    } finally {
-      await client.logout();
+    
+    if (folder === 'drafts') {
+      const data = await getCrmData();
+      const userDrafts = (data.mailDrafts || {})[req.userId] || [];
+      return res.json({ ok: true, emails: userDrafts });
     }
 
-    emails.reverse(); // newest first
-    res.json({ ok: true, emails });
+    if (folder !== 'inbox' && folder !== 'sent') {
+      return res.status(400).json({ error: 'Invalid folder' });
+    }
+
+    // Fetch emails from Supabase mailbox_emails table
+    const { data: emails, error } = await supabase
+      .from('mailbox_emails')
+      .select('*')
+      .eq('user_id', req.userId)
+      .eq('folder', folder)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const formatted = (emails || []).map(e => ({
+      id: e.id,
+      messageId: e.message_id,
+      folder: e.folder,
+      fromName: e.from_name || e.from_email,
+      fromEmail: e.from_email,
+      to: e.to_email,
+      cc: e.cc,
+      subject: e.subject,
+      body: e.body,
+      html: e.html,
+      unread: e.unread,
+      attachments: (e.attachments || []).map((a, i) => ({
+        index: i,
+        filename: a.filename,
+        size: a.size || 0,
+        contentType: a.contentType || 'application/octet-stream'
+      })),
+      date: e.created_at
+    }));
+
+    res.json({ ok: true, emails: formatted });
   } catch (e) {
-    console.error('Mail sync error:', e.message);
-    res.status(502).json({ error: e.message || 'Failed to sync emails.' });
+    console.error('Mail fetch error:', e.message);
+    res.status(500).json({ error: e.message || 'Failed to fetch emails.' });
   }
 });
 
-// POST /api/mail/mark-read  { folder, uid }  — add \Seen flag on IMAP server
+// POST /api/mail/mark-read  { uid }  — mark email as read in database
 app.post('/api/mail/mark-read', validateSession, async (req, res) => {
-  const { folder = 'inbox', uid } = req.body || {};
+  const { uid } = req.body || {};
   if (!uid) return res.status(400).json({ error: 'uid is required.' });
   try {
-    const data = await getCrmData();
-    const saved = ((data.zohoMailSettings || {})[req.userId]) || null;
-    if (!saved || !saved.encryptedPassword) {
-      return res.status(400).json({ error: 'Mail account not configured.' });
-    }
-    const password = decryptField(saved.encryptedPassword);
-    const client = makeImapClient(saved.email, password);
-    await client.connect();
-    const FOLDER_MAP = { inbox: 'INBOX', sent: 'Sent', drafts: 'Drafts' };
-    const imapFolder = FOLDER_MAP[folder.toLowerCase()] || 'INBOX';
-    try {
-      const lock = await client.getMailboxLock(imapFolder);
-      try {
-        await client.messageFlagsAdd([parseInt(uid, 10)], ['\\Seen'], { uid: true });
-      } finally { lock.release(); }
-    } finally { await client.logout(); }
+    const { error } = await supabase
+      .from('mailbox_emails')
+      .update({ unread: false })
+      .eq('id', uid)
+      .eq('user_id', req.userId);
+
+    if (error) throw new Error(error.message);
     res.json({ ok: true });
   } catch (e) {
     console.error('Mail mark-read error:', e.message);
-    res.status(502).json({ error: e.message || 'Failed to mark as read.' });
+    res.status(500).json({ error: e.message || 'Failed to mark as read.' });
   }
 });
 
-// GET  /api/mail/attachment?folder=inbox&uid=123&index=0  — download a single attachment's bytes
+// GET  /api/mail/attachment?uid=uuid&index=0  — download attachment from B2
 app.get('/api/mail/attachment', validateSession, async (req, res) => {
-  const folder = (req.query.folder || 'inbox').toLowerCase();
-  const uid = parseInt(req.query.uid, 10);
+  const mailId = req.query.uid;
   const index = parseInt(req.query.index, 10);
-  if (!uid || Number.isNaN(index)) {
-    return res.status(400).json({ error: 'folder, uid, and index are required.' });
+  if (!mailId || Number.isNaN(index)) {
+    return res.status(400).json({ error: 'uid and index are required.' });
   }
 
   try {
-    const data = await getCrmData();
-    const saved = ((data.zohoMailSettings || {})[req.userId]) || null;
-    if (!saved || !saved.encryptedPassword) {
-      return res.status(400).json({ error: 'Mail account not configured.' });
-    }
-    const password = decryptField(saved.encryptedPassword);
-    const client = makeImapClient(saved.email, password);
-    await client.connect();
+    const { data: email, error } = await supabase
+      .from('mailbox_emails')
+      .select('attachments')
+      .eq('id', mailId)
+      .eq('user_id', req.userId)
+      .single();
 
-    const FOLDER_MAP = { inbox: 'INBOX', sent: 'Sent', drafts: 'Drafts' };
-    const imapFolder = FOLDER_MAP[folder] || 'INBOX';
-
-    let attachment = null;
-    try {
-      const lock = await client.getMailboxLock(imapFolder);
-      try {
-        const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
-        if (msg && msg.source) {
-          const parsed = await simpleParser(msg.source);
-          attachment = (parsed.attachments || [])[index] || null;
-        }
-      } finally {
-        lock.release();
-      }
-    } finally {
-      await client.logout();
+    if (error || !email || !email.attachments) {
+      return res.status(404).json({ error: 'Email or attachments not found.' });
     }
 
-    if (!attachment) return res.status(404).json({ error: 'Attachment not found.' });
+    const att = email.attachments[index];
+    if (!att || !att.storagePath) {
+      return res.status(404).json({ error: 'Attachment not found.' });
+    }
 
-    res.setHeader('Content-Type', attachment.contentType || 'application/octet-stream');
-    const safeAttachName = encodeURIComponent(attachment.filename || 'attachment');
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${safeAttachName}`);
-    res.send(attachment.content);
+    // Redirect to temporary B2 signed download URL
+    const url = await signedDownloadUrl(att.storagePath);
+    res.redirect(url);
   } catch (e) {
     console.error('Mail attachment fetch error:', e.message);
-    res.status(502).json({ error: e.message || 'Failed to fetch attachment.' });
+    res.status(502).json({ error: e.message || 'Failed to fetch attachment from B2.' });
   }
 });
 
+// POST /api/mail/reply — Reply to email thread using In-Reply-To and References
+app.post('/api/mail/reply', validateSession, async (req, res) => {
+  try {
+    const { replyToId, to, cc, subject, body, attachments } = req.body || {};
+    if (!replyToId) return res.status(400).json({ error: 'replyToId is required.' });
+    if (!to) return res.status(400).json({ error: 'Recipient (to) is required.' });
+
+    const { data: parentMail, error: parentError } = await supabase
+      .from('mailbox_emails')
+      .select('*')
+      .eq('id', replyToId)
+      .eq('user_id', req.userId)
+      .single();
+
+    if (parentError || !parentMail) {
+      return res.status(404).json({ error: 'Parent email not found.' });
+    }
+
+    const crmData = await getCrmData();
+    const member = (crmData.team || []).find(m => m.id === req.userId);
+    if (!member || !member.email || !member.mailboxAddress) {
+      return res.status(400).json({ error: 'Team member profile with email not found. Cannot send reply.' });
+    }
+
+    let mailAttachments = [];
+    if (Array.isArray(attachments) && attachments.length) {
+      let totalBytes = 0;
+      for (const att of attachments) {
+        if (!att || typeof att.content !== 'string' || !att.filename) {
+          return res.status(400).json({ error: 'Each attachment needs a filename and base64 content.' });
+        }
+        const buffer = Buffer.from(att.content, 'base64');
+        totalBytes += buffer.length;
+        if (totalBytes > MAIL_MAX_ATTACH_BYTES) {
+          return res.status(400).json({ error: `Attachments exceed the ${(MAIL_MAX_ATTACH_BYTES / (1024 * 1024)).toFixed(0)}MB limit.` });
+        }
+        mailAttachments.push({
+          filename: att.filename,
+          content: buffer,
+          contentType: att.contentType || 'application/octet-stream',
+        });
+      }
+    }
+
+    const inReplyTo = parentMail.message_id;
+    const parentRefs = parentMail.references_header || '';
+    const referencesHeader = (parentRefs ? parentRefs + ' ' : '') + parentMail.message_id;
+
+    const mailboxKey = process.env.RESEND_MAILBOX_KEY;
+    if (!mailboxKey) {
+      throw new Error('RESEND_MAILBOX_KEY is not configured on the server.');
+    }
+
+    const from = member.name ? `"${member.name}" <${member.mailboxAddress}>` : member.mailboxAddress;
+    const toArray = Array.isArray(to) ? to : String(to).split(',').map(s => s.trim());
+    const ccArray = cc ? (Array.isArray(cc) ? cc : String(cc).split(',').map(s => s.trim())) : undefined;
+
+    const hasHtml = /<[a-z][\s\S]*>/i.test(body || '');
+    const htmlContent = hasHtml ? body : (body || '').replace(/\n/g, '<br>');
+
+    const payload = {
+      from,
+      to: toArray,
+      ...(ccArray ? { cc: ccArray } : {}),
+      reply_to: member.mailboxAddress,
+      subject: subject || '(No Subject)',
+      html: htmlContent || '',
+      text: body || '',
+      headers: {
+        'In-Reply-To': inReplyTo,
+        'References': referencesHeader
+      }
+    };
+
+    if (mailAttachments.length) {
+      payload.attachments = mailAttachments.map(att => ({
+        filename: att.filename,
+        content: att.content.toString('base64')
+      }));
+    }
+
+    const resendRes = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${mailboxKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const resendData = await resendRes.json();
+    if (!resendRes.ok) {
+      console.error('Resend reply failed:', resendData);
+      throw new Error(resendData.message || 'Failed to send email via Resend API.');
+    }
+
+    const resendId = resendData.id;
+
+    // Upload reply attachments to B2
+    const attachmentsMetadata = [];
+    for (const att of mailAttachments) {
+      const uniqueFileName = `${Date.now()}_${att.filename}`;
+      const storagePath = `mail_attachments/${uniqueFileName}`;
+      await uploadToB2(storagePath, att.content, att.contentType);
+      attachmentsMetadata.push({
+        filename: att.filename,
+        storagePath,
+        contentType: att.contentType,
+        size: att.content.length
+      });
+    }
+
+    // Save the sent email in Supabase mailbox_emails
+    const sentRecord = {
+      user_id: req.userId,
+      message_id: resendId,
+      folder: 'sent',
+      from_name: member.name || null,
+      from_email: member.mailboxAddress,
+      to_email: toArray.join(', '),
+      cc: ccArray ? ccArray.join(', ') : null,
+      subject: subject || '(No Subject)',
+      body: body || '',
+      html: htmlContent || '',
+      attachments: attachmentsMetadata,
+      unread: false,
+      in_reply_to: inReplyTo,
+      references_header: referencesHeader,
+      created_at: new Date().toISOString()
+    };
+
+    const { error: insertErr } = await supabase
+      .from('mailbox_emails')
+      .insert(sentRecord);
+
+    if (insertErr) {
+      console.error('Error inserting sent reply into Supabase:', insertErr);
+    }
+
+    console.log(`📤 Reply successfully sent and archived via Resend API by ${req.userId} to ${to}`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/mail/reply error:', e);
+    res.status(502).json({ error: e.message || 'Failed to send reply.' });
+  }
+});
+
+async function sendUserMailViaResend({ fromName, fromEmail, to, cc, subject, body, attachments }) {
+  const apiKey = process.env.RESEND_MAILBOX_KEY || process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error('RESEND_MAILBOX_KEY is not configured on the server.');
+  }
+
+  const from = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail;
+  const toArray = Array.isArray(to) ? to : String(to).split(',').map(s => s.trim());
+  const ccArray = cc ? (Array.isArray(cc) ? cc : String(cc).split(',').map(s => s.trim())) : undefined;
+
+  const hasHtml = /<[a-z][\s\S]*>/i.test(body || '');
+  const htmlContent = hasHtml ? body : (body || '').replace(/\n/g, '<br>');
+
+  const payload = {
+    from,
+    to: toArray,
+    ...(ccArray ? { cc: ccArray } : {}),
+    reply_to: fromEmail,
+    subject: subject || '(No Subject)',
+    html: htmlContent || '',
+    text: body || ''
+  };
+
+  if (attachments && attachments.length) {
+    payload.attachments = attachments.map(att => ({
+      filename: att.filename,
+      content: att.content.toString('base64')
+    }));
+  }
+
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    console.error('Resend user email failed:', data);
+    throw new Error(data.message || 'Failed to send email via Resend API.');
+  }
+  return data;
+}
+
 const MAIL_MAX_ATTACH_BYTES = 20 * 1024 * 1024; // ~20MB total, matches typical Zoho send limits
 
-// POST /api/mail/send  — send an email via Zoho SMTP using the user's own credentials
+// POST /api/mail/send  — send an email via Resend using the user's own credentials
 app.post('/api/mail/send', validateSession, async (req, res) => {
   try {
     const { to, cc, subject, body, attachments } = req.body || {};
@@ -2213,39 +2788,67 @@ app.post('/api/mail/send', validateSession, async (req, res) => {
     }
 
     const data = await getCrmData();
-    const saved = ((data.zohoMailSettings || {})[req.userId]) || null;
-    if (!saved || !saved.encryptedPassword) {
-      return res.status(400).json({ error: 'Mail account not configured. Go to Mail Settings first.' });
+    const member = (data.team || []).find(m => m.id === req.userId);
+    if (!member || !member.email || !member.mailboxAddress) {
+      return res.status(400).json({ error: 'Team member profile with email/mailboxAddress not found. Cannot send email.' });
     }
-    const password = decryptField(saved.encryptedPassword);
-    const { smtp } = getZohoHosts(saved.email);
-
-    const transporter = nodemailer.createTransport({
-      host: smtp,
-      port: 465,
-      secure: true,
-      auth: { user: saved.email, pass: password },
-    });
-
-    const fromLabel = saved.name
-      ? `"${saved.name}" <${saved.email}>`
-      : saved.email;
-
-    await transporter.sendMail({
-      from: fromLabel,
+    
+    const sendResult = await sendUserMailViaResend({
+      fromName: member.name,
+      fromEmail: member.mailboxAddress,
       to,
-      ...(cc ? { cc } : {}),
-      replyTo: saved.replyto || saved.email,
-      subject: subject || '(No Subject)',
-      text: body || '',
-      ...(mailAttachments.length ? { attachments: mailAttachments } : {}),
+      cc,
+      subject,
+      body,
+      attachments: mailAttachments
     });
 
-    console.log(`📤 Email sent by ${req.userId} to ${to}${mailAttachments.length ? ` with ${mailAttachments.length} attachment(s)` : ''}`);
+    const resendId = sendResult.id;
+
+    // Upload sent attachments to B2
+    const attachmentsMetadata = [];
+    for (const att of mailAttachments) {
+      const uniqueFileName = `${Date.now()}_${att.filename}`;
+      const storagePath = `mail_attachments/${uniqueFileName}`;
+      await uploadToB2(storagePath, att.content, att.contentType);
+      attachmentsMetadata.push({
+        filename: att.filename,
+        storagePath,
+        contentType: att.contentType,
+        size: att.content.length
+      });
+    }
+
+    // Save the sent email in Supabase mailbox_emails
+    const sentRecord = {
+      user_id: req.userId,
+      message_id: resendId,
+      folder: 'sent',
+      from_name: member.name || null,
+      from_email: member.mailboxAddress,
+      to_email: Array.isArray(to) ? to.join(', ') : to,
+      cc: cc ? (Array.isArray(cc) ? cc.join(', ') : cc) : null,
+      subject: subject || '(No Subject)',
+      body: body || '',
+      html: /<[a-z][\s\S]*>/i.test(body || '') ? body : (body || '').replace(/\n/g, '<br>'),
+      attachments: attachmentsMetadata,
+      unread: false,
+      created_at: new Date().toISOString()
+    };
+
+    const { error: insertErr } = await supabase
+      .from('mailbox_emails')
+      .insert(sentRecord);
+
+    if (insertErr) {
+      console.error('Error inserting sent email into Supabase:', insertErr);
+    }
+    
+    console.log(`📤 Email sent via Resend API by ${req.userId} (${member.mailboxAddress}) to ${to}`);
     res.json({ ok: true });
   } catch (e) {
     console.error('Mail send error:', e.message);
-    res.status(502).json({ error: e.message || 'Failed to send email.' });
+    res.status(502).json({ error: e.message || 'Failed to send email via Resend API.' });
   }
 });
 
@@ -3755,6 +4358,7 @@ const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0
 (async () => {
   try {
     await initSupabase();
+    await migrateMailboxAddresses();
   } catch (e) {
     console.error('âŒ Could not connect to Supabase. Server will not start.');
     console.error(e.message);
