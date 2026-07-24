@@ -8242,30 +8242,30 @@
       background: color-mix(in srgb, var(--accent) 10%, transparent);
     }
 
-    /* Read (opened) emails are bold; unread stays normal/light */
-    .mail-list-item:not(.is-unread) .mail-li-from {
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .mail-list-item:not(.is-unread) .mail-li-subject {
-      font-weight: 700;
-      color: var(--text);
-    }
-
+    /* Unread emails are bold; read (opened) stays normal/light */
     .mail-list-item.is-unread .mail-li-from {
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .mail-list-item.is-unread .mail-li-subject {
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .mail-list-item:not(.is-unread) .mail-li-from {
       font-weight: 400;
       color: var(--text-muted);
     }
 
-    .mail-list-item.is-unread .mail-li-subject {
+    .mail-list-item:not(.is-unread) .mail-li-subject {
       font-weight: 400;
       color: var(--text-muted);
     }
 
     .mail-list-item.is-unread .mail-li-snippet {
-      font-weight: 400;
-      opacity: .8;
+      font-weight: 550;
+      color: var(--text);
     }
 
     .mail-li-row1 {
@@ -8407,7 +8407,7 @@
       border: 1px solid var(--border);
       border-radius: 8px;
       margin-bottom: 12px;
-      background: var(--bg-card, #ffffff);
+      background: var(--surface);
       overflow: hidden;
       box-shadow: 0 1px 3px rgba(0,0,0,0.05);
       transition: box-shadow 0.2s, border-color 0.2s;
@@ -8415,7 +8415,7 @@
     
     .mail-thread-message:hover {
       box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-      border-color: var(--primary, #14b8a6);
+      border-color: var(--accent, #14b8a6);
     }
     
     .mail-thread-message-header {
@@ -8425,7 +8425,7 @@
       align-items: center;
       cursor: pointer;
       user-select: none;
-      background: var(--bg-card-header, #fcfcfc);
+      background: var(--surface-2);
     }
     
     .mail-thread-message-meta {
@@ -9494,6 +9494,104 @@
       body:has([data-view-page="app"].is-active) .productivity-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
       body:has([data-view-page="app"].is-active) .kanban:not(.hidden) { grid-template-columns: repeat(4, minmax(260px, 1fr)) !important; overflow-x: auto !important; }
     }
+
+    /* Toggle Badges inside switcher toggles */
+    .toggle-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--red, #D63B3B);
+      color: #fff !important;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 99px;
+      margin-left: 6px;
+      line-height: 1;
+      height: 15px;
+      min-width: 15px;
+      box-sizing: border-box;
+      vertical-align: middle;
+    }
+    .toggle-badge.hidden {
+      display: none !important;
+    }
+
+    /* Mail List Item Kebab icon and hover state */
+    .mail-list-item .mail-item-kebab {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 4px;
+      cursor: pointer;
+      z-index: 10;
+      color: var(--text-muted);
+      box-shadow: var(--shadow-sm);
+      transition: all 0.1s ease;
+      align-items: center;
+      justify-content: center;
+    }
+    .mail-list-item:hover .mail-item-kebab {
+      display: inline-flex;
+    }
+    .mail-list-item .mail-item-kebab:hover {
+      color: var(--text);
+      background: var(--surface-2);
+      border-color: var(--border-strong);
+    }
+
+    /* Kebab contextual menu dropdown */
+    .kebab-dropdown {
+      position: fixed;
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      box-shadow: var(--shadow-md);
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      padding: 4px;
+      min-width: 140px;
+      animation: kebabFadeIn 0.12s ease-out;
+    }
+    @keyframes kebabFadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .kebab-dropdown.hidden {
+      display: none !important;
+    }
+    .kebab-dropdown button {
+      background: none;
+      border: none;
+      padding: 8px 12px;
+      text-align: left;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--text);
+      cursor: pointer;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      box-sizing: border-box;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .kebab-dropdown button:hover {
+      background: var(--surface-2);
+    }
+    .kebab-dropdown button.kebab-delete {
+      color: var(--red, #D63B3B);
+    }
+    .kebab-dropdown button.kebab-delete:hover {
+      background: color-mix(in srgb, var(--red) 10%, transparent);
+    }
     </style>
 </head>
 
@@ -9789,16 +9887,16 @@
             <input type="text" id="mail-search-input" class="field__input" placeholder="Search mail..." oninput="mailSearch(this.value)" style="max-width: 220px; padding: 6px 12px; margin-left: 8px; display:none;">
             <div style="margin-left:auto"></div>
             <div class="mail-view-toggle">
-                <button id="toggle-chat-btn" class="is-active" onclick="switchChatMailView('chat')">
+                <button id="toggle-chat-btn" class="is-active" onclick="switchChatMailView('chat')" style="position: relative;">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:-2px;margin-right:4px">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                  </svg>Chat
+                  </svg>Chat<span id="badge-toggle-chat" class="toggle-badge hidden">0</span>
                 </button>
-                <button id="toggle-mail-btn" onclick="switchChatMailView('mail')">
+                <button id="toggle-mail-btn" onclick="switchChatMailView('mail')" style="position: relative;">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:-2px;margin-right:4px">
                     <rect x="2" y="4" width="20" height="16" rx="2"></rect>
                     <polyline points="2,4 12,13 22,4"></polyline>
-                  </svg>Mail
+                  </svg>Mail<span id="badge-toggle-mail" class="toggle-badge hidden">0</span>
                 </button>
               </div><button class="btn btn--secondary btn--sm" id="chat-refresh-btn" onclick="reloadDBFromDisk()" title="Pull in any new messages saved by others">↺ Refresh</button></div>
 
@@ -9893,7 +9991,7 @@
                       </svg>
                       Reply
                     </button>
-                    <button class="btn btn--ghost btn--sm" style="color:var(--red)" onclick="mailDeleteCurrent()">
+                    <button class="btn btn--ghost btn--sm" id="btn-mail-delete-current" style="color:var(--red)" onclick="mailDeleteCurrent()">
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M3 6h18"></path>
                         <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
@@ -11232,6 +11330,8 @@
             }
             return;
           }
+
+          if (data && data.type === 'chat-read' && data.userId === currentUserId) return;
 
           if (typeof reloadDBFromDisk === 'function') reloadDBFromDisk();
         });
@@ -13983,7 +14083,14 @@
         const snippet = snippetLines.join(' ').trim().substring(0, 60) + (snippetLines.join(' ').trim().length > 60 ? '…' : '');
 
         return `
-          <div class="mail-list-item ${activeClass} ${unreadClass}" onclick="mailSelect('${m.folder}','${m.id}')">
+          <div class="mail-list-item ${activeClass} ${unreadClass}" onclick="mailSelect('${m.folder}','${m.id}')" style="position: relative;">
+            <button class="mail-item-kebab" onclick="event.stopPropagation(); window.toggleMailKebabDropdown(event, '${m.id}', '${m.folder}', ${hasUnread})" title="More actions" aria-label="More actions">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="5" r="1.5"></circle>
+                <circle cx="12" cy="12" r="1.5"></circle>
+                <circle cx="12" cy="19" r="1.5"></circle>
+              </svg>
+            </button>
             <div class="mail-item-row1">
               <div class="mail-item-avatar">${initials}</div>
               <span class="mail-item-sender">
@@ -14006,6 +14113,83 @@
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
     }
+
+    let _activeKebabTarget = null;
+
+    window.toggleMailKebabDropdown = function(event, mailId, folder, hasUnread) {
+      event.stopPropagation();
+      const dropdown = document.getElementById('mail-kebab-dropdown');
+      if (!dropdown) return;
+
+      if (!_activeKebabTarget || _activeKebabTarget.mailId !== mailId) {
+        _activeKebabTarget = { mailId, folder, hasUnread };
+        const textSpan = document.getElementById('kebab-mark-text');
+        if (textSpan) {
+          textSpan.textContent = hasUnread ? 'Mark as read' : 'Mark as unread';
+        }
+
+        const rect = event.currentTarget.getBoundingClientRect();
+        dropdown.style.left = (rect.right - 140) + 'px';
+        dropdown.style.top = (rect.bottom + 4) + 'px';
+        dropdown.classList.remove('hidden');
+        dropdown.style.display = 'flex';
+      } else {
+        window.closeMailKebabDropdown();
+      }
+    };
+
+    window.closeMailKebabDropdown = function() {
+      const dropdown = document.getElementById('mail-kebab-dropdown');
+      if (dropdown) {
+        dropdown.classList.add('hidden');
+        dropdown.style.display = 'none';
+      }
+      _activeKebabTarget = null;
+    };
+
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('#mail-kebab-dropdown') && !e.target.closest('.mail-item-kebab')) {
+        window.closeMailKebabDropdown();
+      }
+    });
+
+    window.kebabMarkReadState = function(event) {
+      event.stopPropagation();
+      if (!_activeKebabTarget) return;
+      const { mailId, folder, hasUnread } = _activeKebabTarget;
+      window.closeMailKebabDropdown();
+      window.setMailUnreadState(mailId, folder, !hasUnread);
+    };
+
+    window.setMailUnreadState = function(mailId, folder, isUnread) {
+      const targetMail = _liveMails.find(m => m.id === mailId && m.folder === folder);
+      if (targetMail) {
+        const normSubj = getNormalizedSubject(targetMail.subject);
+        _liveMails.forEach(m => {
+          if (m.folder === folder && (m.id === mailId || (normSubj && getNormalizedSubject(m.subject) === normSubj))) {
+            m.unread = isUnread;
+          }
+        });
+        renderMailList();
+        updateMailInboxBadge();
+
+        fetch('/api/mail/mark-read', {
+          method: 'POST',
+          headers: apiHeaders(),
+          body: JSON.stringify({ uid: mailId, unread: isUnread })
+        }).catch(err => console.error('Failed to sync mail unread state:', err));
+      }
+    };
+
+    window.kebabDeleteMail = function(event) {
+      event.stopPropagation();
+      if (!_activeKebabTarget) return;
+      const { mailId, folder } = _activeKebabTarget;
+      window.closeMailKebabDropdown();
+      if (typeof deleteThreadMessage === 'function') {
+        deleteThreadMessage(folder, mailId);
+      }
+    };
 
     /* ---- select & read an email ---- */
     function mailSelect(folder, id) {
@@ -14070,6 +14254,8 @@
       if (reader) reader.style.display = 'flex';
 
       // Reset selected checks
+      const deleteCurrentBtn = document.getElementById('btn-mail-delete-current');
+      if (deleteCurrentBtn) deleteCurrentBtn.style.display = 'inline-flex';
       const deleteSelectedBtn = document.getElementById('btn-mail-delete-selected');
       if (deleteSelectedBtn) {
         deleteSelectedBtn.style.display = 'none';
@@ -14168,9 +14354,14 @@
           msgBody.style.display = isLatest ? 'block' : 'none';
 
           if (m.html) {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            const bodyColor = isDark ? '#F2F2EF' : '#1a1a1a';
+            const quoteBtnBorder = isDark ? '#3C4045' : '#e0e0e0';
+            const quoteBtnHover = isDark ? '#2B2E32' : '#f5f5f5';
+
             const iframe = document.createElement('iframe');
             iframe.setAttribute('sandbox', 'allow-same-origin');
-            iframe.style.cssText = 'width:100%;border:none;min-height:40px;background:#fff;';
+            iframe.style.cssText = 'width:100%;border:none;min-height:40px;background:transparent;';
             iframe.title = 'Email content';
             msgBody.appendChild(iframe);
             
@@ -14178,7 +14369,7 @@
               try {
                 const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
                 iframeDoc.open();
-                iframeDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;font-size:14px;margin:8px;color:#1a1a1a;word-break:break-word;}blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent { display: none; }.quote-toggle-btn { background: none; border: 1px solid #e0e0e0; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: #888; cursor: pointer; margin-top: 8px; display: inline-block; }.quote-toggle-btn:hover { background: #f5f5f5; }</style></head><body>${m.html}\<script\>const quotes = document.querySelectorAll('blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent');if (quotes.length > 0) { const btn = document.createElement('button'); btn.className = 'quote-toggle-btn'; btn.textContent = '▶ Show quoted text'; btn.onclick = function() { const isHidden = quotes[0].style.display !== 'block'; quotes.forEach(q => { q.style.display = isHidden ? 'block' : 'none'; }); btn.textContent = isHidden ? '▼ Hide quoted text' : '▶ Show quoted text'; window.parent.postMessage({ type: 'resize-iframe', id: '${m.id}', height: document.body.scrollHeight }, '*'); }; document.body.appendChild(btn); }\<\/script\></body></html>`);
+                iframeDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;font-size:14px;margin:8px;color:${bodyColor};word-break:break-word;background:transparent;}blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent { display: none; }.quote-toggle-btn { background: none; border: 1px solid ${quoteBtnBorder}; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: ${isDark ? '#A4A6A2' : '#888'}; cursor: pointer; margin-top: 8px; display: inline-block; }.quote-toggle-btn:hover { background: ${quoteBtnHover}; }</style></head><body>${m.html}\<script\>const quotes = document.querySelectorAll('blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent');if (quotes.length > 0) { const btn = document.createElement('button'); btn.className = 'quote-toggle-btn'; btn.textContent = '▶ Show quoted text'; btn.onclick = function() { const isHidden = quotes[0].style.display !== 'block'; quotes.forEach(q => { q.style.display = isHidden ? 'block' : 'none'; }); btn.textContent = isHidden ? '▼ Hide quoted text' : '▶ Show quoted text'; window.parent.postMessage({ type: 'resize-iframe', id: '${m.id}', height: document.body.scrollHeight }, '*'); }; document.body.appendChild(btn); }\<\/script\></body></html>`);
                 iframeDoc.close();
                 setTimeout(() => {
                   try { iframe.style.height = (iframe.contentDocument.body.scrollHeight + 16) + 'px'; } catch(e) {}
@@ -14543,11 +14734,18 @@
     window.onMailMsgCheckChange = function() {
       const checks = document.querySelectorAll('.mail-msg-select-check:checked');
       const count = checks.length;
-      const btn = document.getElementById('btn-mail-delete-selected');
-      if (btn) {
-        btn.style.display = count > 0 ? 'inline-flex' : 'none';
-        const countSpan = document.getElementById('mail-selected-count');
-        if (countSpan) countSpan.textContent = count;
+      const deleteCurrentBtn = document.getElementById('btn-mail-delete-current');
+      const deleteSelectedBtn = document.getElementById('btn-mail-delete-selected');
+      if (count > 0) {
+        if (deleteCurrentBtn) deleteCurrentBtn.style.display = 'none';
+        if (deleteSelectedBtn) {
+          deleteSelectedBtn.style.display = 'inline-flex';
+          const countSpan = document.getElementById('mail-selected-count');
+          if (countSpan) countSpan.textContent = count;
+        }
+      } else {
+        if (deleteCurrentBtn) deleteCurrentBtn.style.display = 'inline-flex';
+        if (deleteSelectedBtn) deleteSelectedBtn.style.display = 'none';
       }
     };
 
@@ -15210,7 +15408,14 @@
       } else {
         (db.messages || []).forEach(m => { if (m.fromId === chatId && m.toId === currentUserId && !m.read) { m.read = true; changed = true; } });
       }
-      if (changed) saveDB();
+      if (changed) {
+        saveDB();
+        fetch('/api/chat/mark-read', {
+          method: 'POST',
+          headers: apiHeaders(),
+          body: JSON.stringify({ chatId })
+        }).catch(err => console.error('Failed to persist chat read state:', err));
+      }
       return changed;
     }
 
@@ -15772,11 +15977,26 @@
       if (mBadge) mBadge.textContent = db.meetings.length;
       const pBadge = document.getElementById('badge-projects');
       if (pBadge) pBadge.textContent = isAdmin() ? db.projects.length : db.projects.filter(isMyProject).length;
+      
+      const chatUnread = typeof totalChatUnread === 'function' ? totalChatUnread() : 0;
+      const mailUnread = _liveMails.filter(m => m.folder === 'inbox' && m.unread).length;
+
+      const toggleChatBadge = document.getElementById('badge-toggle-chat');
+      if (toggleChatBadge) {
+        toggleChatBadge.textContent = chatUnread;
+        toggleChatBadge.classList.toggle('hidden', chatUnread === 0);
+      }
+
+      const toggleMailBadge = document.getElementById('badge-toggle-mail');
+      if (toggleMailBadge) {
+        toggleMailBadge.textContent = mailUnread;
+        toggleMailBadge.classList.toggle('hidden', mailUnread === 0);
+      }
+
       const chatBadge = document.getElementById('badge-chat');
       if (chatBadge) {
         // Combine unread chat messages + unread inbox emails into one sidebar badge
-        const mailUnread = _liveMails.filter(m => m.folder === 'inbox' && m.unread).length;
-        const n = totalChatUnread() + mailUnread;
+        const n = chatUnread + mailUnread;
         chatBadge.textContent = n;
         chatBadge.classList.toggle('hidden', n === 0);
       }
@@ -23368,6 +23588,17 @@
 
 
 
+  <!-- Global Mail Kebab Context Menu -->
+  <div id="mail-kebab-dropdown" class="kebab-dropdown hidden" role="menu">
+    <button id="kebab-mark-btn" onclick="window.kebabMarkReadState(event)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+      <span id="kebab-mark-text">Mark as read</span>
+    </button>
+    <button class="kebab-delete" onclick="window.kebabDeleteMail(event)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+      Delete
+    </button>
+  </div>
 </body></html>
 
 

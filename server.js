@@ -1512,6 +1512,51 @@ app.post('/api/chat/send', validateSession, async (req, res) => {
   }
 });
 
+// POST /api/chat/mark-read — mark chat messages in a window as read on the server
+app.post('/api/chat/mark-read', validateSession, async (req, res) => {
+  try {
+    const { chatId } = req.body || {};
+    if (!chatId) {
+      return res.status(400).json({ error: 'chatId is required.' });
+    }
+
+    const current = await getCrmData();
+    current.messages = current.messages || [];
+    let changed = false;
+
+    const isGroup = String(chatId).startsWith('group:');
+    if (isGroup) {
+      const groupId = String(chatId).slice(6);
+      current.messages.forEach(m => {
+        if (m && m.groupId === groupId && m.fromId !== req.userId) {
+          m.readBy = Array.isArray(m.readBy) ? m.readBy : [];
+          if (!m.readBy.includes(req.userId)) {
+            m.readBy.push(req.userId);
+            changed = true;
+          }
+        }
+      });
+    } else {
+      // Direct message from partner (chatId) to current user (req.userId)
+      current.messages.forEach(m => {
+        if (m && m.fromId === chatId && m.toId === req.userId && !m.read) {
+          m.read = true;
+          changed = true;
+        }
+      });
+    }
+
+    if (changed) {
+      await setCrmData(current);
+      io.emit('db_changed', { type: 'chat-read', userId: req.userId });
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/chat/mark-read error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Explicit endpoint for the frontend to log CRM actions (like creating projects or clocking in)
 app.post('/api/log-activity', validateSession, (req, res) => {
   const text = String(req.body.text || '').trim().slice(0, 500);
@@ -2590,14 +2635,15 @@ app.get('/api/mail/inbox', validateSession, async (req, res) => {
   }
 });
 
-// POST /api/mail/mark-read  { uid }  — mark email as read in database
+// POST /api/mail/mark-read  { uid, unread }  — mark email as read or unread in database
 app.post('/api/mail/mark-read', validateSession, async (req, res) => {
-  const { uid } = req.body || {};
+  const { uid, unread } = req.body || {};
   if (!uid) return res.status(400).json({ error: 'uid is required.' });
+  const isUnread = unread !== undefined ? !!unread : false;
   try {
     const { error } = await supabase
       .from('mailbox_emails')
-      .update({ unread: false })
+      .update({ unread: isUnread })
       .eq('id', uid)
       .eq('user_id', req.userId);
 
@@ -2609,14 +2655,14 @@ app.post('/api/mail/mark-read', validateSession, async (req, res) => {
       const list = mailboxCache.get(cacheKey);
       const cachedItem = list.find(m => m.id === uid);
       if (cachedItem) {
-        cachedItem.unread = false;
+        cachedItem.unread = isUnread;
       }
     }
 
     res.json({ ok: true });
   } catch (e) {
     console.error('Mail mark-read error:', e.message);
-    res.status(500).json({ error: e.message || 'Failed to mark as read.' });
+    res.status(500).json({ error: e.message || 'Failed to update read state.' });
   }
 });
 
