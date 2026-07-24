@@ -8463,6 +8463,13 @@
       line-height: 1.6;
     }
     
+    html[data-theme="dark"] .mail-thread-message-body {
+      color: #FFFFFF !important;
+    }
+    html[data-theme="dark"] .mail-thread-message-body * {
+      color: #FFFFFF;
+    }
+    
     .mail-thread-count {
       display: inline-flex;
       align-items: center;
@@ -11131,6 +11138,9 @@
       } else {
         document.documentElement.setAttribute('data-theme', 'dark');
         try { localStorage.setItem('crm-theme', 'dark'); } catch (e) { }
+      }
+      if (typeof _selectedMailId !== 'undefined' && _selectedMailId && typeof mailSelect === 'function') {
+        mailSelect(_selectedMailFolder, _selectedMailId);
       }
     }
     function now() { return Date.now(); }
@@ -14355,9 +14365,17 @@
 
           if (m.html) {
             const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-            const bodyColor = isDark ? '#F2F2EF' : '#1a1a1a';
+            const bodyColor = isDark ? '#FFFFFF' : '#111111';
             const quoteBtnBorder = isDark ? '#3C4045' : '#e0e0e0';
             const quoteBtnHover = isDark ? '#2B2E32' : '#f5f5f5';
+
+            const darkOverride = isDark ? `
+              body, body p, body div, body span, body td, body th, body li, body h1, body h2, body h3, body h4, body h5, body h6, body b, body strong, body i, body em { color: #FFFFFF !important; }
+              a { color: #38bdf8 !important; }
+            ` : `
+              body { color: #111111; }
+              a { color: #0284c7; }
+            `;
 
             const iframe = document.createElement('iframe');
             iframe.setAttribute('sandbox', 'allow-same-origin');
@@ -14369,7 +14387,7 @@
               try {
                 const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
                 iframeDoc.open();
-                iframeDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;font-size:14px;margin:8px;color:${bodyColor};word-break:break-word;background:transparent;}blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent { display: none; }.quote-toggle-btn { background: none; border: 1px solid ${quoteBtnBorder}; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: ${isDark ? '#A4A6A2' : '#888'}; cursor: pointer; margin-top: 8px; display: inline-block; }.quote-toggle-btn:hover { background: ${quoteBtnHover}; }</style></head><body>${m.html}\<script\>const quotes = document.querySelectorAll('blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent');if (quotes.length > 0) { const btn = document.createElement('button'); btn.className = 'quote-toggle-btn'; btn.textContent = '▶ Show quoted text'; btn.onclick = function() { const isHidden = quotes[0].style.display !== 'block'; quotes.forEach(q => { q.style.display = isHidden ? 'block' : 'none'; }); btn.textContent = isHidden ? '▼ Hide quoted text' : '▶ Show quoted text'; window.parent.postMessage({ type: 'resize-iframe', id: '${m.id}', height: document.body.scrollHeight }, '*'); }; document.body.appendChild(btn); }\<\/script\></body></html>`);
+                iframeDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;font-size:14px;margin:8px;word-break:break-word;background:transparent;}${darkOverride}blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent { display: none; }.quote-toggle-btn { background: none; border: 1px solid ${quoteBtnBorder}; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: ${isDark ? '#A4A6A2 !important' : '#888888'}; cursor: pointer; margin-top: 8px; display: inline-block; }.quote-toggle-btn:hover { background: ${quoteBtnHover}; }</style></head><body>${m.html}\<script\>const quotes = document.querySelectorAll('blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent');if (quotes.length > 0) { const btn = document.createElement('button'); btn.className = 'quote-toggle-btn'; btn.textContent = '▶ Show quoted text'; btn.onclick = function() { const isHidden = quotes[0].style.display !== 'block'; quotes.forEach(q => { q.style.display = isHidden ? 'block' : 'none'; }); btn.textContent = isHidden ? '▼ Hide quoted text' : '▶ Show quoted text'; window.parent.postMessage({ type: 'resize-iframe', id: '${m.id}', height: document.body.scrollHeight }, '*'); }; document.body.appendChild(btn); }\<\/script\></body></html>`);
                 iframeDoc.close();
                 setTimeout(() => {
                   try { iframe.style.height = (iframe.contentDocument.body.scrollHeight + 16) + 'px'; } catch(e) {}
