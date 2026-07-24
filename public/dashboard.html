@@ -8461,10 +8461,12 @@
       font-size: 13.5px;
       color: var(--text);
       line-height: 1.6;
+      background: transparent !important;
     }
     
     html[data-theme="dark"] .mail-thread-message-body {
       color: #FFFFFF !important;
+      background: transparent !important;
     }
     html[data-theme="dark"] .mail-thread-message-body * {
       color: #FFFFFF;
@@ -14472,11 +14474,9 @@
             const quoteBtnBorder = isDark ? '#3C4045' : '#e0e0e0';
             const quoteBtnHover = isDark ? '#2B2E32' : '#f5f5f5';
 
-            const darkOverride = isDark ? `
-              html, body { background: transparent !important; color: #FFFFFF !important; }
-              body, body p, body div, body span, body td, body th, body li, body h1, body h2, body h3, body h4, body h5, body h6, body b, body strong, body i, body em { color: #FFFFFF !important; }
-              div, table, tr, td, th, section, article, header, footer { background-color: transparent !important; background: transparent !important; }
-              a { color: #38bdf8 !important; }
+            const themeOverrideCss = isDark ? `
+              html, body, html *, body * { background-color: transparent !important; background: transparent !important; color: #FFFFFF !important; }
+              a, a * { color: #38bdf8 !important; }
             ` : `
               html, body { background: transparent; color: #111111; }
               a { color: #0284c7; }
@@ -14492,7 +14492,7 @@
               try {
                 const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
                 iframeDoc.open();
-                iframeDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;font-size:14px;margin:8px;word-break:break-word;background:transparent;}${darkOverride}blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent { display: none; }.quote-toggle-btn { background: none; border: 1px solid ${quoteBtnBorder}; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: ${isDark ? '#A4A6A2 !important' : '#888888'}; cursor: pointer; margin-top: 8px; display: inline-block; }.quote-toggle-btn:hover { background: ${quoteBtnHover}; }</style></head><body>${m.html}\<script\>const quotes = document.querySelectorAll('blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent');if (quotes.length > 0) { const btn = document.createElement('button'); btn.className = 'quote-toggle-btn'; btn.textContent = '▶ Show quoted text'; btn.onclick = function() { const isHidden = quotes[0].style.display !== 'block'; quotes.forEach(q => { q.style.display = isHidden ? 'block' : 'none'; }); btn.textContent = isHidden ? '▼ Hide quoted text' : '▶ Show quoted text'; window.parent.postMessage({ type: 'resize-iframe', id: '${m.id}', height: document.body.scrollHeight }, '*'); }; document.body.appendChild(btn); }\<\/script\></body></html>`);
+                iframeDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{font-family:sans-serif;font-size:14px;margin:8px;word-break:break-word;background:transparent !important;}blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent { display: none; }.quote-toggle-btn { background: none; border: 1px solid ${quoteBtnBorder}; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: ${isDark ? '#A4A6A2 !important' : '#888888'}; cursor: pointer; margin-top: 8px; display: inline-block; }.quote-toggle-btn:hover { background: ${quoteBtnHover}; }</style></head><body>${m.html}<style>${themeOverrideCss}</style>\<script\>const quotes = document.querySelectorAll('blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent');if (quotes.length > 0) { const btn = document.createElement('button'); btn.className = 'quote-toggle-btn'; btn.textContent = '▶ Show quoted text'; btn.onclick = function() { const isHidden = quotes[0].style.display !== 'block'; quotes.forEach(q => { q.style.display = isHidden ? 'block' : 'none'; }); btn.textContent = isHidden ? '▼ Hide quoted text' : '▶ Show quoted text'; window.parent.postMessage({ type: 'resize-iframe', id: '${m.id}', height: document.body.scrollHeight }, '*'); }; document.body.appendChild(btn); }\<\/script\></body></html>`);
                 iframeDoc.close();
                 setTimeout(() => {
                   try { iframe.style.height = (iframe.contentDocument.body.scrollHeight + 16) + 'px'; } catch(e) {}
