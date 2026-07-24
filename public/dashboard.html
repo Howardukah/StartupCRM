@@ -16718,7 +16718,7 @@
           if (oldAddedAt) l.addedAt = oldAddedAt;
         }
       } else {
-        data.id = genId();
+        data.id = uid('lead');
         data.status = 'new';
         data.addedAt = new Date().toISOString();
         db.leads.push(data);
@@ -16835,7 +16835,7 @@
         const t = db.mailTemplates.find(x => x.id === id);
         if (t) Object.assign(t, data);
       } else {
-        data.id = genId();
+        data.id = uid('mt');
         db.mailTemplates.push(data);
       }
       queueSave();
