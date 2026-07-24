@@ -14023,6 +14023,12 @@
       if (reader) reader.style.display = 'flex';
 
       document.getElementById('mail-reader-subject').textContent = latestMail.subject || '(No Subject)';
+      document.getElementById('mail-reader-from').textContent = `${latestMail.fromName} <${latestMail.fromEmail}>`;
+      document.getElementById('mail-reader-date').textContent = new Date(latestMail.date).toLocaleString();
+
+      const topInitials = (latestMail.fromName || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+      const topAvatarEl = document.getElementById('mail-reader-avatar');
+      if (topAvatarEl) topAvatarEl.textContent = topInitials;
       
       const bodyEl = document.getElementById('mail-reader-body');
       if (bodyEl) {
@@ -14046,11 +14052,14 @@
           const snippetLines = snippetSrc.split('\n').filter(l => !/^>/.test(l) && !/^On .+ wrote:/.test(l));
           const snippet = snippetLines.join(' ').trim().substring(0, 80) + (snippetLines.join(' ').trim().length > 80 ? '…' : '');
 
+          const isMe = m.folder === 'sent' || (currentUser() && m.fromEmail && m.fromEmail.toLowerCase() === currentUser().email.toLowerCase());
+          const displaySender = isMe ? 'Me' : m.fromName;
+
           header.innerHTML = `
             <div class="avatar" style="width:28px;height:28px;font-size:11px;">${initials}</div>
             <div class="mail-thread-message-meta">
               <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span class="mail-thread-message-sender">${m.fromName} &lt;${m.fromEmail}&gt;</span>
+                <span class="mail-thread-message-sender">${displaySender}</span>
                 <span class="mail-thread-message-date">${new Date(m.date).toLocaleString()}</span>
               </div>
               <div class="mail-thread-message-preview" style="${isLatest ? 'display:none;' : 'display:block;'}">
@@ -14357,10 +14366,26 @@
       mailOpenCompose();
       _replyingToMailId = mail.id;
       document.getElementById('mail-to').value = mail.fromEmail;
-      document.getElementById('mail-subject').value = 'Re: ' + (mail.subject || '');
+      
+      const sub = mail.subject || '';
+      document.getElementById('mail-subject').value = sub.toLowerCase().startsWith('re:') ? sub : 'Re: ' + sub;
+
+      // Extract only the clean message body written by the sender, stripping previous history
+      const rawText = mail.body || '';
+      const lines = rawText.split('\n');
+      const cleanLines = [];
+      for (const line of lines) {
+        if (/^>/.test(line.trim()) || /^On .+ wrote:/.test(line.trim())) {
+          break;
+        }
+        cleanLines.push(line);
+      }
+      const cleanBody = cleanLines.join('\n').trim();
+
       document.getElementById('mail-body').value =
         `\n\nOn ${new Date(mail.date).toLocaleString()}, ${mail.fromName} wrote:\n> ` +
-        (mail.body || '').replace(/\n/g, '\n> ');
+        cleanBody.replace(/\n/g, '\n> ');
+
       const bodyEl = document.getElementById('mail-body');
       if (bodyEl) { bodyEl.focus(); bodyEl.setSelectionRange(0, 0); }
     }
