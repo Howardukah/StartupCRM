@@ -741,7 +741,7 @@ app.post('/webhooks/inbound-mail', async (req, res) => {
       isValid = await resend.webhooks.verify({
         payload,
         headers,
-        secret
+        webhookSecret: secret
       });
     } catch (e) {
       console.warn('Webhook verification check failed:', e.message);
