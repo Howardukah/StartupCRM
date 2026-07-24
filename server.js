@@ -717,18 +717,22 @@ app.post('/api/auth/setup', async (req, res) => {
 app.post('/webhooks/inbound-mail', async (req, res) => {
   try {
     const payload = req.rawBody ? req.rawBody.toString() : '';
+    const svixId = req.headers['svix-id'];
+    const svixTimestamp = req.headers['svix-timestamp'];
+    const svixSignature = req.headers['svix-signature'];
+
+    if (!svixId || !svixTimestamp || !svixSignature) {
+      return res.status(400).json({ error: 'Missing Svix headers' });
+    }
+
     const headers = {
-      'svix-id': req.headers['svix-id'],
-      'svix-timestamp': req.headers['svix-timestamp'],
-      'svix-signature': req.headers['svix-signature']
+      id: svixId,
+      timestamp: svixTimestamp,
+      signature: svixSignature
     };
     const secret = process.env.RESEND_WEBHOOK_SECRET;
 
     console.log('DEBUG Webhook: Available environment keys starting with RESEND_:', Object.keys(process.env).filter(k => k.startsWith('RESEND_')));
-
-    if (!headers['svix-id'] || !headers['svix-timestamp'] || !headers['svix-signature']) {
-      return res.status(400).json({ error: 'Missing Svix headers' });
-    }
 
     if (!secret) {
       console.error('⚠️ RESEND_WEBHOOK_SECRET is not configured on the server.');
