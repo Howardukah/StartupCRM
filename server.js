@@ -2533,6 +2533,8 @@ app.get('/api/mail/inbox', validateSession, async (req, res) => {
     const formatted = (emails || []).map(e => ({
       id: e.id,
       messageId: e.message_id,
+      inReplyTo: e.in_reply_to || null,
+      referencesHeader: e.references_header || null,
       folder: e.folder,
       fromName: e.from_name || e.from_email,
       fromEmail: e.from_email,

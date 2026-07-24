@@ -8381,6 +8381,25 @@
       color: var(--text);
     }
 
+    .mail-quoted-wrap {
+      margin-top: 12px;
+    }
+
+    .mail-quoted-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 10px;
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .mail-quoted-toggle:hover {
+      background: var(--hover-bg, rgba(128,128,128,0.1));
+    }
+
     .mail-reader__actions {
       padding: 12px 24px;
       border-top: 1px solid var(--border);
@@ -11084,12 +11103,26 @@
               if (mailActive && _currentMailTab === 'inbox') {
                 mailSyncFolder('inbox');
               } else {
+                // Background fetch: capture existing IDs first so we can detect new arrivals
+                const _bgOldIds = new Set(_liveMails.map(m => m.id || m.uid || m.messageId));
                 fetch('/api/mail/inbox?folder=inbox', { headers: apiHeaders() })
                   .then(r => r.json())
                   .then(json => {
                     if (json.ok) {
+                      const incomingMails = json.emails || [];
+                      // Fire notification for each genuinely new unread email
+                      let _bgNewFound = false;
+                      incomingMails
+                        .filter(m => m.unread && !_bgOldIds.has(m.id || m.uid || m.messageId))
+                        .forEach(m => {
+                          const mailId = m.id || m.uid || m.messageId;
+                          showSlideNotification('New Email', 'From: ' + (m.fromName || m.fromEmail) + '<br><b>' + (m.subject || '(No Subject)') + '</b>', 'mail');
+                          addNotification(currentUserId, '<b>' + escapeHTML(m.fromName || m.fromEmail || 'Someone') + '</b> sent an email: <b>' + escapeHTML(m.subject || '(No Subject)') + '</b>', null, { type: 'mail', mailId: mailId });
+                          _bgNewFound = true;
+                        });
+                      if (_bgNewFound && typeof queueSave === 'function') queueSave(0);
                       _liveMails = _liveMails.filter(m => m.folder !== 'inbox');
-                      _liveMails = _liveMails.concat(json.emails || []);
+                      _liveMails = _liveMails.concat(incomingMails);
                       updateMailInboxBadge();
                     }
                   }).catch(() => {});
@@ -13704,6 +13737,7 @@
             showSlideNotification('New Email', 'From: ' + (m.fromName || m.fromEmail) + '<br><b>' + (m.subject || '') + '</b>', 'mail');
             addNotification(currentUserId, '<b>' + escapeHTML(m.fromName || m.fromEmail || 'Someone') + '</b> sent an email: <b>' + escapeHTML(m.subject || '(No Subject)') + '</b>', null, { type: 'mail', mailId: mailId });
           });
+          if (newUnreadMails.length > 0 && typeof queueSave === 'function') queueSave(0);
         }
 
         // merge synced emails for this folder into _liveMails
@@ -13749,15 +13783,24 @@
         const activeClass = (_selectedMailId === m.id && _selectedMailFolder === m.folder) ? 'is-active' : '';
         const unreadClass = m.unread ? 'is-unread' : '';
         const displaySender = _currentMailTab === 'sent' ? `To: ${m.to}` : m.fromName;
+        const isReply = !!(m.inReplyTo);
+        // Build a clean snippet: prefer plaintext body, strip quoted lines ("> ..." and "On ... wrote:")
+        let snippetSrc = m.body || '';
+        if (!snippetSrc && m.html) {
+          // Strip HTML tags for snippet
+          snippetSrc = m.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        }
+        const snippetLines = snippetSrc.split('\n').filter(l => !/^>/.test(l) && !/^On .+ wrote:/.test(l));
+        const snippet = snippetLines.join(' ').trim().substring(0, 60) + (snippetLines.join(' ').trim().length > 60 ? '…' : '');
         return `
           <div class="mail-list-item ${activeClass} ${unreadClass}" onclick="mailSelect('${m.folder}','${m.id}')">
             <div class="mail-item-row1">
               <div class="mail-item-avatar">${initials}</div>
-              <span class="mail-item-sender">${displaySender}</span>
+              <span class="mail-item-sender">${isReply ? '↩ ' : ''}${displaySender}</span>
               <span class="mail-item-date">${dateStr}</span>
             </div>
             <div class="mail-item-subject">${m.subject || '(No Subject)'}</div>
-            <div class="mail-item-snippet">${(m.body || '').substring(0, 60)}${(m.body || '').length > 60 ? '...' : ''}</div>
+            <div class="mail-item-snippet">${snippet || '(No preview)'}</div>
           </div>`;
       }).join('');
     }
@@ -13828,8 +13871,56 @@
       const avatarEl = document.getElementById('mail-reader-avatar');
       if (avatarEl) avatarEl.textContent = initials;
 
+
       const bodyEl = document.getElementById('mail-reader-body');
-      if (bodyEl) bodyEl.innerHTML = (mail.body || '').replace(/\n/g, '<br>');
+      if (bodyEl) {
+        if (mail.html) {
+          // Render full HTML email in a sandboxed iframe to isolate styles and scripts
+          const iframe = document.createElement('iframe');
+          iframe.setAttribute('sandbox', 'allow-same-origin');
+          iframe.style.cssText = 'width:100%;border:none;min-height:200px;background:#fff;';
+          iframe.title = 'Email content';
+          bodyEl.innerHTML = '';
+          bodyEl.appendChild(iframe);
+          // Write HTML after mount so srcdoc and sandbox work cross-browser
+          const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+          iframeDoc.open();
+          iframeDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;font-size:14px;margin:16px;color:#1a1a1a;word-break:break-word;}</style></head><body>${mail.html}</body></html>`);
+          iframeDoc.close();
+          // Auto-resize to content height
+          setTimeout(() => {
+            try { iframe.style.height = (iframe.contentDocument.body.scrollHeight + 32) + 'px'; } catch(e) {}
+          }, 100);
+        } else {
+          // Plain-text: split on quote markers (lines starting with ">") and collapse them
+          const rawText = mail.body || '';
+          const lines = rawText.split('\n');
+          const mainLines = [];
+          const quotedLines = [];
+          let inQuote = false;
+          for (const line of lines) {
+            if (/^>/.test(line) || /^On .+ wrote:/.test(line)) {
+              inQuote = true;
+            }
+            if (inQuote) {
+              quotedLines.push(line);
+            } else {
+              mainLines.push(line);
+            }
+          }
+          const mainHtml = mainLines.join('\n').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+          if (quotedLines.length > 0) {
+            const quotedHtml = quotedLines.join('\n').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+            bodyEl.innerHTML = mainHtml +
+              `<div class="mail-quoted-wrap">
+                <button class="mail-quoted-toggle" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.textContent=this.nextElementSibling.style.display==='none'?'▶ Show quoted text':'▼ Hide quoted text'">▶ Show quoted text</button>
+                <div class="mail-quoted-body" style="display:none;margin-top:8px;padding:8px 12px;border-left:3px solid var(--border);color:var(--text-muted);font-size:13px;">${quotedHtml}</div>
+              </div>`;
+          } else {
+            bodyEl.innerHTML = mainHtml;
+          }
+        }
+      }
 
       const attachEl = document.getElementById('mail-reader-attachments');
       if (attachEl) {
