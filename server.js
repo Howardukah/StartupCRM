@@ -984,15 +984,13 @@ app.post('/api/auth/login', async (req, res) => {
       await setCrmData(data);
 
       try {
-        const mailer = getMailer();
-        if (mailer) {
-          const toEmail = member.personalEmail || member.email;
-          const fromName = process.env.SMTP_FROM_NAME || 'Startup CRM';
-          const fromAddr = process.env.SMTP_USER;
-          const supportEmail = process.env.SUPPORT_EMAIL || 'support@startupbuild.tech';
+        const toEmail = member.personalEmail || member.email;
+        const fromName = process.env.SMTP_FROM_NAME || 'Startup CRM';
+        const fromAddr = process.env.SMTP_USER || 'noreply@startupbuild.tech';
+        const supportEmail = process.env.SUPPORT_EMAIL || 'support@startupbuild.tech';
 
-          const emailSubject = `⚠️ Security Alert: Login attempt from a new IP/device`;
-          const emailHtml = `<!DOCTYPE html>
+        const emailSubject = `⚠️ Security Alert: Login attempt from a new IP/device`;
+        const emailHtml = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -1021,17 +1019,16 @@ app.post('/api/auth/login', async (req, res) => {
 </body>
 </html>`;
 
-          // Non-blocking background send so login is instant
-          mailer.sendMail({
-            from: `"${fromName}" <${fromAddr}>`,
-            to: toEmail,
-            subject: emailSubject,
-            html: emailHtml,
-          }).then(() => console.log(`📧 Suspicious login alert email sent to ${toEmail}`))
-            .catch(err => console.error('Failed to send suspicious login email:', err));
-        }
+        // Non-blocking background send with fallback engine (Resend / Brevo API / SMTP)
+        sendMailWithFallback({
+          from: `"${fromName}" <${fromAddr}>`,
+          to: toEmail,
+          subject: emailSubject,
+          html: emailHtml,
+        }).then(() => console.log(`📧 Suspicious login alert email sent to ${toEmail}`))
+          .catch(err => console.error('Failed to send suspicious login email:', err.message));
       } catch (err) {
-        console.error('Security email error:', err);
+        console.error('Security email error:', err.message);
       }
     }
 
