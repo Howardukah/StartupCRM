@@ -14165,12 +14165,33 @@
     }
 
     /* ---- delete (local-only for now) ---- */
-    function mailDeleteCurrent() {
+    async function mailDeleteCurrent() {
       if (!_selectedMailId) return;
-      _liveMails = _liveMails.filter(m => !(m.id === _selectedMailId && m.folder === _selectedMailFolder));
-      updateMailInboxBadge();
-      showToast('Email removed from view.', 'success');
-      mailGoFolder(_currentMailTab);
+
+      const idToDelete = _selectedMailId;
+      const folderToDelete = _selectedMailFolder;
+
+      // Disable delete button while request is in-flight
+      const deleteBtn = document.querySelector('#mail-reader .btn--ghost[style*="red"]');
+      if (deleteBtn) { deleteBtn.disabled = true; deleteBtn.textContent = 'Deleting…'; }
+
+      try {
+        const r = await fetch(`/api/mail/${encodeURIComponent(idToDelete)}`, {
+          method: 'DELETE',
+          headers: apiHeaders(),
+        });
+        const json = await r.json();
+        if (!r.ok) throw new Error(json.error || 'Delete failed');
+
+        // Remove from local cache
+        _liveMails = _liveMails.filter(m => !(m.id === idToDelete && m.folder === folderToDelete));
+        updateMailInboxBadge();
+        showToast('Email deleted.', 'success');
+        mailGoFolder(_currentMailTab);
+      } catch (e) {
+        showToast('Delete failed: ' + e.message, 'error');
+        if (deleteBtn) { deleteBtn.disabled = false; deleteBtn.textContent = 'Delete'; }
+      }
     }
 
     /* ---- settings ---- */

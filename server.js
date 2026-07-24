@@ -2498,6 +2498,35 @@ app.delete('/api/mail/drafts/:id', validateSession, async (req, res) => {
   }
 });
 
+// DELETE /api/mail/:id — permanently delete an email from Supabase and cache
+app.delete('/api/mail/:id', validateSession, async (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ error: 'id is required.' });
+  try {
+    const { data: deleted, error } = await supabase
+      .from('mailbox_emails')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', req.userId)   // enforce ownership
+      .select('folder')
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    // Evict from write-through cache
+    const folder = deleted?.folder || 'inbox';
+    const cacheKey = `${req.userId}:${folder}`;
+    if (mailboxCache.has(cacheKey)) {
+      mailboxCache.set(cacheKey, mailboxCache.get(cacheKey).filter(m => m.id !== id));
+    }
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Mail delete error:', e.message);
+    res.status(500).json({ error: e.message || 'Failed to delete email.' });
+  }
+});
+
 app.get('/api/mail/inbox', validateSession, async (req, res) => {
   try {
     const folder = (req.query.folder || 'inbox').toLowerCase();
