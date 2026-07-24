@@ -13620,30 +13620,77 @@
     let _notificationsInitialized = false;
     const _notifiedMeetings = new Set();
 
-    function showSlideNotification(title, message, type) {
+    function playNotificationSound(type) {
       try {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (AudioContext) {
-          const ctx = new AudioContext();
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        if (ctx.state === 'suspended') ctx.resume();
+        const now = ctx.currentTime;
+
+        if (type === 'chat') {
+          // Chat: Crisp modern double-chime (E6 -> A6 synth bell)
           const osc1 = ctx.createOscillator();
-          const osc2 = ctx.createOscillator();
-          const gain = ctx.createGain();
+          const gain1 = ctx.createGain();
           osc1.type = 'sine';
-          osc2.type = 'triangle';
-          osc1.frequency.value = 1108.7;
-          osc2.frequency.value = 1661.2;
-          osc1.connect(gain);
-          osc2.connect(gain);
+          osc1.frequency.setValueAtTime(1318.51, now);
+          gain1.gain.setValueAtTime(0, now);
+          gain1.gain.linearRampToValueAtTime(0.2, now + 0.01);
+          gain1.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+          osc1.connect(gain1);
+          gain1.connect(ctx.destination);
+          osc1.start(now);
+          osc1.stop(now + 0.25);
+
+          const osc2 = ctx.createOscillator();
+          const gain2 = ctx.createGain();
+          osc2.type = 'sine';
+          osc2.frequency.setValueAtTime(1760.0, now + 0.08);
+          gain2.gain.setValueAtTime(0, now + 0.08);
+          gain2.gain.linearRampToValueAtTime(0.25, now + 0.09);
+          gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
+          osc2.connect(gain2);
+          gain2.connect(ctx.destination);
+          osc2.start(now + 0.08);
+          osc2.stop(now + 0.45);
+
+        } else if (type === 'mail') {
+          // Mail: Elegant tri-tone crystal chime (G5 -> C6 -> E6)
+          const freqs = [783.99, 1046.50, 1318.51];
+          freqs.forEach((freq, i) => {
+            const start = now + (i * 0.07);
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, start);
+            gain.gain.setValueAtTime(0, start);
+            gain.gain.linearRampToValueAtTime(0.18, start + 0.015);
+            gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.35);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(start);
+            osc.stop(start + 0.35);
+          });
+
+        } else {
+          // Default info chime
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(880, now);
+          gain.gain.setValueAtTime(0, now);
+          gain.gain.linearRampToValueAtTime(0.15, now + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+          osc.connect(gain);
           gain.connect(ctx.destination);
-          gain.gain.setValueAtTime(0, ctx.currentTime);
-          gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.02);
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-          osc1.start(ctx.currentTime);
-          osc2.start(ctx.currentTime);
-          osc1.stop(ctx.currentTime + 0.6);
-          osc2.stop(ctx.currentTime + 0.6);
+          osc.start(now);
+          osc.stop(now + 0.3);
         }
       } catch (e) { }
+    }
+
+    function showSlideNotification(title, message, type) {
+      playNotificationSound(type);
       let container = document.getElementById('slide-toast-container');
       if (!container) {
         container = document.createElement('div');
@@ -13925,17 +13972,22 @@
       updateMailboxLayoutClass();
     }
 
+    let _knownMailIds = new Set();
+    let _mailSyncInitialized = false;
+
     /* ---- sync folder from server ---- */
-    async function mailSyncFolder(folder) {
+    async function mailSyncFolder(folder, isSilent = false) {
       if (_mailSyncing) return;
       
       const hasLocalCache = _liveMails.some(m => m.folder === folder);
-      if (hasLocalCache) {
-        renderMailList();
-      } else {
-        const container = document.getElementById('mail-list-body');
-        if (container) {
-          container.innerHTML = '<div class="mail-empty-list" style="color:var(--text-muted);font-size:13px;padding:20px;">Syncing...</div>';
+      if (!isSilent) {
+        if (hasLocalCache) {
+          renderMailList();
+        } else {
+          const container = document.getElementById('mail-list-body');
+          if (container) {
+            container.innerHTML = '<div class="mail-empty-list" style="color:var(--text-muted);font-size:13px;padding:20px;">Syncing...</div>';
+          }
         }
       }
 
@@ -13948,32 +14000,65 @@
         const json = await r.json();
         if (!r.ok) throw new Error(json.error || 'Sync failed');
 
-        // check for new unread emails before updating
-        const oldMailIds = new Set(_liveMails.map(m => m.id || m.uid || m.messageId));
         const incomingMails = json.emails || [];
-        if (_liveMails.length > 0) {
-          const newUnreadMails = incomingMails.filter(m => m.unread && !oldMailIds.has(m.id || m.uid || m.messageId));
+
+        if (!_mailSyncInitialized) {
+          // Initialize known mail IDs set on first load without firing alerts for old emails
+          incomingMails.forEach(m => {
+            const mailId = m.id || m.uid || m.messageId;
+            if (mailId) _knownMailIds.add(mailId);
+          });
+          _mailSyncInitialized = true;
+        } else {
+          // Detect genuine new unread emails arriving after initial sync
+          const newUnreadMails = incomingMails.filter(m => {
+            const mailId = m.id || m.uid || m.messageId;
+            return m.unread && mailId && !_knownMailIds.has(mailId);
+          });
+
           newUnreadMails.forEach(m => {
             const mailId = m.id || m.uid || m.messageId;
-            showSlideNotification('New Email', 'From: ' + (m.fromName || m.fromEmail) + '<br><b>' + (m.subject || '') + '</b>', 'mail');
-            addNotification(currentUserId, '<b>' + escapeHTML(m.fromName || m.fromEmail || 'Someone') + '</b> sent an email: <b>' + escapeHTML(m.subject || '(No Subject)') + '</b>', null, { type: 'mail', mailId: mailId });
+            if (mailId) _knownMailIds.add(mailId);
+            const senderText = escapeHTML(m.fromName || m.fromEmail || 'Someone');
+            const subjText = escapeHTML(m.subject || '(No Subject)');
+            
+            showSlideNotification('New Email', `From: ${senderText}<br><b>${subjText}</b>`, 'mail');
+            if (typeof addNotification === 'function') {
+              addNotification(currentUserId, `<b>${senderText}</b> sent an email: <b>${subjText}</b>`, null, { type: 'mail', mailId });
+            }
           });
-          if (newUnreadMails.length > 0 && typeof queueSave === 'function') queueSave(0);
+
+          if (newUnreadMails.length > 0 && typeof queueSave === 'function') {
+            queueSave(0);
+          }
         }
+
+        // Always update known IDs cache
+        incomingMails.forEach(m => {
+          const mailId = m.id || m.uid || m.messageId;
+          if (mailId) _knownMailIds.add(mailId);
+        });
 
         // merge synced emails for this folder into _liveMails
         _liveMails = _liveMails.filter(m => m.folder !== folder);
-        _liveMails = _liveMails.concat(json.emails || []);
+        _liveMails = _liveMails.concat(incomingMails);
         updateMailInboxBadge();
         renderMailList();
       } catch (e) {
-        showToast('Sync error: ' + e.message, 'error');
+        if (!isSilent) showToast('Sync error: ' + e.message, 'error');
         const container = document.getElementById('mail-list-body');
-        if (container && !hasLocalCache) container.innerHTML = '<div class="mail-empty-list">Failed to load emails.</div>';
+        if (container && !hasLocalCache && !isSilent) container.innerHTML = '<div class="mail-empty-list">Failed to load emails.</div>';
       } finally {
         _mailSyncing = false;
       }
     }
+
+    // Background automatic mail sync every 35 seconds to ensure instant toast alerts
+    setInterval(() => {
+      if (typeof mailSyncFolder === 'function' && sessionStorage.getItem('crm-session-token')) {
+        mailSyncFolder('inbox', true);
+      }
+    }, 35000);
 
     function getNormalizedSubject(subject) {
       if (!subject) return 'no-subject';
