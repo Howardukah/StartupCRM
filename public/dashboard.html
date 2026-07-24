@@ -5118,15 +5118,17 @@
       animation: drawerOut .24s cubic-bezier(.32,.72,0,1) forwards;
     }
 
-    /* Deadline Alert Modal & Schedule Meeting Modal styling: centered, compact popup instead of a drawer */
+    /* Center popup styling for specific modals */
     #modal-deadline-alert,
-    #modal-meeting {
+    #modal-meeting,
+    #modal-mail-templates {
       align-items: center;
       justify-content: center;
       padding: 16px;
     }
     #modal-deadline-alert .modal__panel,
-    #modal-meeting .modal__panel {
+    #modal-meeting .modal__panel,
+    #modal-mail-templates .modal__panel {
       height: auto;
       max-height: 90vh;
       border-radius: 16px;
@@ -10914,60 +10916,77 @@
 
   <!-- ============ MODAL: MAIL TEMPLATES ============ -->
   <div class="modal" id="modal-mail-templates">
-    <div class="modal__panel" style="max-width:850px; width: 90%;">
-      <button class="modal__close" onclick="closeModal('modal-mail-templates')">×</button>
-      <h2 style="margin-top:0">Mail Templates</h2>
-      <div style="display:flex; gap:24px;">
-        <!-- Left Side: List & Search -->
-        <div style="flex:1; border-right:1px solid var(--border); padding-right:20px; display: flex; flex-direction: column;">
-          <div style="margin-bottom: 12px;">
-            <input type="text" id="mt-search" class="field__input" placeholder="Search templates..." oninput="renderMailTemplatesList()" style="width: 100%; font-size: 13px; height: 34px; padding: 6px 10px;">
-          </div>
-          <ul id="mt-list" style="list-style:none; padding:0; margin:0; max-height:350px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></ul>
-          <button class="btn btn--secondary btn--sm" style="margin-top:16px; width:100%" onclick="newMailTemplate()">+ New Template</button>
-        </div>
-        
-        <!-- Right Side: Edit / Preview -->
-        <div style="flex:2; display: flex; flex-direction: column;">
-          <!-- Tabs Header -->
-          <div style="display: flex; gap: 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px; padding-bottom: 8px;">
-            <button id="mt-tab-edit" class="tab-btn active" onclick="setTemplateTab('edit')" style="background: none; border: none; font-size: 14px; font-weight: 600; cursor: pointer; color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 4px; transition: all 0.2s;">Editor</button>
-            <button id="mt-tab-preview" class="tab-btn" onclick="setTemplateTab('preview')" style="background: none; border: none; font-size: 14px; font-weight: 500; cursor: pointer; color: var(--text-muted); padding-bottom: 4px; transition: all 0.2s;">Live Preview</button>
-          </div>
+    <div class="modal__panel" style="max-width:850px; width: 90%; height: auto; max-height: 90vh; border-radius: 16px; margin: auto; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25); display: flex; flex-direction: column;">
+      
+      <!-- Modal Header -->
+      <div class="modal__head" style="display: flex; justify-content: space-between; align-items: center; padding: 18px 24px 16px; border-bottom: 1px solid var(--border);">
+        <h2 class="modal__title" style="margin: 0; font-size: 16px; font-weight: 700;">Mail Templates</h2>
+        <button class="modal__close" onclick="closeModal('modal-mail-templates')" style="background: none; border: none; cursor: pointer; font-size: 20px; font-weight: 400; color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px;">×</button>
+      </div>
 
-          <!-- Edit Pane -->
-          <div id="mt-editor-pane">
-            <input type="hidden" id="mt-id">
-            <div class="field"><label class="field__label">Template Name</label><input type="text" class="field__input" id="mt-name" placeholder="e.g. Intro Email"></div>
-            <div class="field"><label class="field__label">Subject</label><input type="text" class="field__input" id="mt-subject" placeholder="e.g. Following up on {{company}}" oninput="updateMailTemplatePreview()"></div>
-            
-            <!-- Variable Badges Panel -->
+      <!-- Modal Body -->
+      <div class="modal__body" style="padding: 24px; overflow-y: auto; flex: 1;">
+        <div style="display:flex; gap:24px;">
+          <!-- Left Side: List & Search -->
+          <div style="flex:1; border-right:1px solid var(--border); padding-right:24px; display: flex; flex-direction: column;">
             <div style="margin-bottom: 12px;">
-              <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-right: 6px; display: block; margin-bottom: 6px;">Insert Variable at cursor:</span>
-              <div style="display: flex; flex-wrap: wrap; gap: 6px;">
-                <button type="button" class="var-badge" onclick="insertVariableAtCursor('{{contactName}}')" title="Inserts client/lead contact name">Client Name</button>
-                <button type="button" class="var-badge" onclick="insertVariableAtCursor('{{company}}')" title="Inserts client company name">Company Name</button>
-                <button type="button" class="var-badge" onclick="insertVariableAtCursor('{{agentName}}')" title="Inserts your display name">Your Name</button>
-                <button type="button" class="var-badge" onclick="insertVariableAtCursor('{{agentEmail}}')" title="Inserts your email address">Your Email</button>
+              <input type="text" id="mt-search" class="field__input" placeholder="Search templates..." oninput="renderMailTemplatesList()" style="width: 100%; font-size: 13px; height: 34px; padding: 6px 10px; box-sizing: border-box;">
+            </div>
+            <ul id="mt-list" style="list-style:none; padding:0; margin:0; max-height:350px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></ul>
+            <button class="btn btn--secondary btn--sm" style="margin-top:16px; width:100%" onclick="newMailTemplate()">+ New Template</button>
+          </div>
+          
+          <!-- Right Side: Edit / Preview -->
+          <div style="flex:2; display: flex; flex-direction: column; min-width: 0;">
+            <!-- Tabs Header -->
+            <div style="display: flex; gap: 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px; padding-bottom: 8px;">
+              <button id="mt-tab-edit" class="tab-btn active" onclick="setTemplateTab('edit')" style="background: none; border: none; font-size: 14px; font-weight: 600; cursor: pointer; color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 4px; transition: all 0.2s;">Editor</button>
+              <button id="mt-tab-preview" class="tab-btn" onclick="setTemplateTab('preview')" style="background: none; border: none; font-size: 14px; font-weight: 500; cursor: pointer; color: var(--text-muted); padding-bottom: 4px; transition: all 0.2s;">Live Preview</button>
+            </div>
+
+            <!-- Edit Pane -->
+            <div id="mt-editor-pane" style="display: flex; flex-direction: column; gap: 12px;">
+              <input type="hidden" id="mt-id">
+              <div class="field" style="display: flex; flex-direction: column;">
+                <label class="field__label">Template Name</label>
+                <input type="text" class="field__input" id="mt-name" placeholder="e.g. Intro Email" style="box-sizing: border-box; width: 100%;">
+              </div>
+              <div class="field" style="display: flex; flex-direction: column;">
+                <label class="field__label">Subject</label>
+                <input type="text" class="field__input" id="mt-subject" placeholder="e.g. Following up on {{company}}" oninput="updateMailTemplatePreview()" style="box-sizing: border-box; width: 100%;">
+              </div>
+              
+              <!-- Variable Badges Panel -->
+              <div>
+                <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-right: 6px; display: block; margin-bottom: 6px;">Insert Variable at cursor:</span>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                  <button type="button" class="var-badge" onclick="insertVariableAtCursor('{{contactName}}')" title="Inserts client/lead contact name" style="cursor: pointer; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: 500; color: var(--text-subtle); transition: all 0.15s;">Client Name</button>
+                  <button type="button" class="var-badge" onclick="insertVariableAtCursor('{{company}}')" title="Inserts client company name" style="cursor: pointer; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: 500; color: var(--text-subtle); transition: all 0.15s;">Company Name</button>
+                  <button type="button" class="var-badge" onclick="insertVariableAtCursor('{{agentName}}')" title="Inserts your display name" style="cursor: pointer; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: 500; color: var(--text-subtle); transition: all 0.15s;">Your Name</button>
+                  <button type="button" class="var-badge" onclick="insertVariableAtCursor('{{agentEmail}}')" title="Inserts your email address" style="cursor: pointer; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: 500; color: var(--text-subtle); transition: all 0.15s;">Your Email</button>
+                </div>
+              </div>
+
+              <div class="field" style="display: flex; flex-direction: column;">
+                <label class="field__label">Body</label>
+                <textarea class="field__textarea" id="mt-body" rows="6" placeholder="Hi {{contactName}}, ..." oninput="updateMailTemplatePreview()" style="box-sizing: border-box; width: 100%; min-height: 120px; font-family: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); resize: vertical;"></textarea>
               </div>
             </div>
 
-            <div class="field"><label class="field__label">Body</label><textarea class="field__input" id="mt-body" rows="8" placeholder="Hi {{contactName}}, ..." oninput="updateMailTemplatePreview()"></textarea></div>
-          </div>
-
-          <!-- Live Preview Pane -->
-          <div id="mt-preview-pane" style="display: none; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; min-height: 280px; max-height: 350px; overflow-y: auto; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
-            <div style="border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 12px;">
-              <div style="font-size: 12px; margin-bottom: 4px; color: var(--text-muted);"><strong style="color: var(--text-muted)">From:</strong> <span id="mt-prev-from" style="color: var(--text)">You &lt;your-email@company.com&gt;</span></div>
-              <div style="font-size: 12px; margin-bottom: 4px; color: var(--text-muted);"><strong style="color: var(--text-muted)">To:</strong> <span style="color: var(--text)">John Doe &lt;johndoe@example.com&gt;</span></div>
-              <div style="font-size: 13px; font-weight: 600; margin-top: 8px; color: var(--text-muted);"><strong style="color: var(--text-muted)">Subject:</strong> <span id="mt-prev-subject" style="color: var(--text); font-weight: 600;">(No Subject)</span></div>
+            <!-- Live Preview Pane -->
+            <div id="mt-preview-pane" style="display: none; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; min-height: 280px; max-height: 350px; overflow-y: auto; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); box-sizing: border-box; width: 100%;">
+              <div style="border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 12px;">
+                <div style="font-size: 12px; margin-bottom: 4px; color: var(--text-muted);"><strong style="color: var(--text-muted)">From:</strong> <span id="mt-prev-from" style="color: var(--text)">You &lt;your-email@company.com&gt;</span></div>
+                <div style="font-size: 12px; margin-bottom: 4px; color: var(--text-muted);"><strong style="color: var(--text-muted)">To:</strong> <span style="color: var(--text)">John Doe &lt;johndoe@example.com&gt;</span></div>
+                <div style="font-size: 13px; font-weight: 600; margin-top: 8px; color: var(--text-muted);"><strong style="color: var(--text-muted)">Subject:</strong> <span id="mt-prev-subject" style="color: var(--text); font-weight: 600;">(No Subject)</span></div>
+              </div>
+              <div id="mt-prev-body" style="font-size: 13px; line-height: 1.6; white-space: pre-wrap; color: var(--text); font-family: var(--sans);"></div>
             </div>
-            <div id="mt-prev-body" style="font-size: 13px; line-height: 1.6; white-space: pre-wrap; color: var(--text); font-family: var(--sans);"></div>
-          </div>
 
-          <div style="display:flex; justify-content:space-between; margin-top:20px;">
-            <button class="btn btn--secondary" onclick="deleteMailTemplate()" style="color:var(--rose); border-color:var(--rose)">Delete</button>
-            <button class="btn btn--primary" onclick="saveMailTemplate()">Save Template</button>
+            <div style="display:flex; justify-content:space-between; margin-top:20px;">
+              <button class="btn btn--secondary" onclick="deleteMailTemplate()" style="color:var(--rose); border-color:var(--rose)">Delete</button>
+              <button class="btn btn--primary" onclick="saveMailTemplate()">Save Template</button>
+            </div>
           </div>
         </div>
       </div>
@@ -16743,16 +16762,17 @@
       const agentName = agent.name || '';
       const agentEmail = agent.email || '';
 
-      subject = subject
-        .replace(/{{company}}/g, company)
-        .replace(/{{contactName}}/g, contactName)
-        .replace(/{{agentName}}/g, agentName)
-        .replace(/{{agentEmail}}/g, agentEmail);
-      body = body
-        .replace(/{{company}}/g, company)
-        .replace(/{{contactName}}/g, contactName)
-        .replace(/{{agentName}}/g, agentName)
-        .replace(/{{agentEmail}}/g, agentEmail);
+      const replacements = {
+        company,
+        contactName,
+        agentName,
+        agentEmail
+      };
+      for (const [k, v] of Object.entries(replacements)) {
+        const regex = new RegExp('{{\\s*' + k + '\\s*}}', 'g');
+        subject = subject.replace(regex, v);
+        body = body.replace(regex, v);
+      }
 
       document.getElementById('mail-subject').value = subject;
       document.getElementById('mail-body').value = body;
