@@ -9899,6 +9899,12 @@
                       </svg>
                       Delete
                     </button>
+                    <button class="btn btn--ghost btn--sm" id="btn-mail-delete-selected" style="color:var(--red); display:none;" onclick="mailDeleteSelected()">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                      </svg>
+                      Delete Selected (<span id="mail-selected-count">0</span>)
+                    </button>
                   </div>
                 </div>
                 <!-- Compose -->
@@ -14022,6 +14028,19 @@
       if (settings) settings.style.display = 'none';
       if (reader) reader.style.display = 'flex';
 
+      // Reset selected checks
+      const deleteSelectedBtn = document.getElementById('btn-mail-delete-selected');
+      if (deleteSelectedBtn) {
+        deleteSelectedBtn.style.display = 'none';
+        deleteSelectedBtn.disabled = false;
+        deleteSelectedBtn.innerHTML = `
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+          </svg>
+          Delete Selected (<span id="mail-selected-count">0</span>)
+        `;
+      }
+
       document.getElementById('mail-reader-subject').textContent = latestMail.subject || '(No Subject)';
       document.getElementById('mail-reader-from').textContent = `${latestMail.fromName} <${latestMail.fromEmail}>`;
       document.getElementById('mail-reader-date').textContent = new Date(latestMail.date).toLocaleString();
@@ -14056,11 +14075,19 @@
           const displaySender = isMe ? 'Me' : m.fromName;
 
           header.innerHTML = `
-            <div class="avatar" style="width:28px;height:28px;font-size:11px;">${initials}</div>
+            <input type="checkbox" class="mail-msg-select-check" data-id="${m.id}" data-folder="${m.folder}" onclick="event.stopPropagation(); window.onMailMsgCheckChange();" style="margin-right: 8px; cursor: pointer; width: 14px; height: 14px; flex-shrink: 0;">
+            <div class="avatar" style="width:28px;height:28px;font-size:11px;flex-shrink: 0;">${initials}</div>
             <div class="mail-thread-message-meta">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
                 <span class="mail-thread-message-sender">${displaySender}</span>
-                <span class="mail-thread-message-date">${new Date(m.date).toLocaleString()}</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="mail-thread-message-date">${new Date(m.date).toLocaleString()}</span>
+                  <button class="btn-msg-delete" onclick="event.stopPropagation(); deleteThreadMessage('${m.folder}', '${m.id}')" title="Delete this message" style="background:none; border:none; color:var(--red); cursor:pointer; padding:2px; display:inline-flex; align-items:center; opacity:0.6; transition:opacity 0.2s;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
               <div class="mail-thread-message-preview" style="${isLatest ? 'display:none;' : 'display:block;'}">
                 ${snippet || '(No preview)'}
@@ -14076,7 +14103,7 @@
           if (m.html) {
             const iframe = document.createElement('iframe');
             iframe.setAttribute('sandbox', 'allow-same-origin');
-            iframe.style.cssText = 'width:100%;border:none;min-height:150px;background:#fff;';
+            iframe.style.cssText = 'width:100%;border:none;min-height:40px;background:#fff;';
             iframe.title = 'Email content';
             msgBody.appendChild(iframe);
             
@@ -14390,12 +14417,15 @@
       if (bodyEl) { bodyEl.focus(); bodyEl.setSelectionRange(0, 0); }
     }
 
-    /* ---- delete (local-only for now) ---- */
+    /* ---- delete ---- */
     async function mailDeleteCurrent() {
       if (!_selectedMailId) return;
 
       const idToDelete = _selectedMailId;
       const folderToDelete = _selectedMailFolder;
+
+      const currentMail = _liveMails.find(m => m.id === idToDelete);
+      const normSubj = currentMail ? getNormalizedSubject(currentMail.subject) : null;
 
       // Disable delete button while request is in-flight
       const deleteBtn = document.querySelector('#mail-reader .btn--ghost[style*="red"]');
@@ -14413,10 +14443,158 @@
         _liveMails = _liveMails.filter(m => !(m.id === idToDelete && m.folder === folderToDelete));
         updateMailInboxBadge();
         showToast('Email deleted.', 'success');
-        mailGoFolder(_currentMailTab);
+
+        // Check if there are other emails left in this thread
+        const remainingInThread = _liveMails.filter(m => {
+          if (normSubj && normSubj !== 'no-subject') {
+            return getNormalizedSubject(m.subject) === normSubj;
+          }
+          return false;
+        });
+
+        if (remainingInThread.length > 0) {
+          // Select the latest remaining message in this thread
+          remainingInThread.sort((a, b) => new Date(b.date) - new Date(a.date));
+          const nextSelect = remainingInThread[0];
+          mailSelect(nextSelect.folder, nextSelect.id);
+        } else {
+          // Close reader and return to list
+          const reader = document.getElementById('mail-reader');
+          const emptyState = document.getElementById('mail-detail-empty');
+          if (reader) reader.style.display = 'none';
+          if (emptyState) emptyState.style.display = 'flex';
+          _selectedMailId = null;
+          _selectedMailFolder = null;
+          mailGoFolder(_currentMailTab);
+        }
       } catch (e) {
         showToast('Delete failed: ' + e.message, 'error');
         if (deleteBtn) { deleteBtn.disabled = false; deleteBtn.textContent = 'Delete'; }
+      }
+    }
+
+    window.onMailMsgCheckChange = function() {
+      const checks = document.querySelectorAll('.mail-msg-select-check:checked');
+      const count = checks.length;
+      const btn = document.getElementById('btn-mail-delete-selected');
+      if (btn) {
+        btn.style.display = count > 0 ? 'inline-flex' : 'none';
+        const countSpan = document.getElementById('mail-selected-count');
+        if (countSpan) countSpan.textContent = count;
+      }
+    };
+
+    async function deleteThreadMessage(folder, id) {
+      if (!confirm('Are you sure you want to delete this message?')) return;
+      
+      const currentMail = _liveMails.find(m => m.id === id);
+      const normSubj = currentMail ? getNormalizedSubject(currentMail.subject) : null;
+
+      try {
+        showToast('Deleting message...', 'info');
+        const r = await fetch(`/api/mail/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          headers: apiHeaders(),
+        });
+        const json = await r.json();
+        if (!r.ok) throw new Error(json.error || 'Delete failed');
+
+        // Remove from local cache
+        _liveMails = _liveMails.filter(m => !(m.id === id && m.folder === folder));
+        updateMailInboxBadge();
+        showToast('Message deleted.', 'success');
+
+        // Check if there are other emails left in this thread
+        const remainingInThread = _liveMails.filter(m => {
+          if (normSubj && normSubj !== 'no-subject') {
+            return getNormalizedSubject(m.subject) === normSubj;
+          }
+          return false;
+        });
+
+        if (remainingInThread.length > 0) {
+          // Refresh conversation view with the latest remaining message
+          remainingInThread.sort((a, b) => new Date(b.date) - new Date(a.date));
+          const nextSelect = remainingInThread[0];
+          mailSelect(nextSelect.folder, nextSelect.id);
+        } else {
+          // Close reader and return to list
+          const reader = document.getElementById('mail-reader');
+          const emptyState = document.getElementById('mail-detail-empty');
+          if (reader) reader.style.display = 'none';
+          if (emptyState) emptyState.style.display = 'flex';
+          _selectedMailId = null;
+          _selectedMailFolder = null;
+          mailGoFolder(_currentMailTab);
+        }
+      } catch (e) {
+        showToast('Delete failed: ' + e.message, 'error');
+      }
+    }
+
+    async function mailDeleteSelected() {
+      const checks = document.querySelectorAll('.mail-msg-select-check:checked');
+      if (checks.length === 0) return;
+      if (!confirm(`Are you sure you want to delete the ${checks.length} selected message(s)?`)) return;
+
+      const deleteBtn = document.getElementById('btn-mail-delete-selected');
+      if (deleteBtn) { deleteBtn.disabled = true; deleteBtn.textContent = 'Deleting…'; }
+
+      const toDelete = [];
+      checks.forEach(chk => {
+        toDelete.push({
+          id: chk.getAttribute('data-id'),
+          folder: chk.getAttribute('data-folder')
+        });
+      });
+
+      const firstMail = _liveMails.find(m => m.id === toDelete[0].id);
+      const normSubj = firstMail ? getNormalizedSubject(firstMail.subject) : null;
+
+      try {
+        await Promise.all(toDelete.map(async (item) => {
+          const r = await fetch(`/api/mail/${encodeURIComponent(item.id)}`, {
+            method: 'DELETE',
+            headers: apiHeaders(),
+          });
+          if (!r.ok) {
+            const json = await r.json().catch(() => ({}));
+            throw new Error(json.error || `Failed to delete message ${item.id}`);
+          }
+        }));
+
+        showToast(`${toDelete.length} message(s) deleted.`, 'success');
+
+        const deleteIds = new Set(toDelete.map(item => item.id));
+        _liveMails = _liveMails.filter(m => !deleteIds.has(m.id));
+        updateMailInboxBadge();
+
+        const remainingInThread = _liveMails.filter(m => {
+          if (normSubj && normSubj !== 'no-subject') {
+            return getNormalizedSubject(m.subject) === normSubj;
+          }
+          return false;
+        });
+
+        if (remainingInThread.length > 0) {
+          remainingInThread.sort((a, b) => new Date(b.date) - new Date(a.date));
+          const nextSelect = remainingInThread[0];
+          mailSelect(nextSelect.folder, nextSelect.id);
+        } else {
+          const reader = document.getElementById('mail-reader');
+          const emptyState = document.getElementById('mail-detail-empty');
+          if (reader) reader.style.display = 'none';
+          if (emptyState) emptyState.style.display = 'flex';
+          _selectedMailId = null;
+          _selectedMailFolder = null;
+          mailGoFolder(_currentMailTab);
+        }
+      } catch (e) {
+        showToast('Delete failed: ' + e.message, 'error');
+        if (deleteBtn) {
+          deleteBtn.disabled = false;
+          window.onMailMsgCheckChange();
+        }
       }
     }
 
