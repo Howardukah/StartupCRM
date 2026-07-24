@@ -11180,9 +11180,6 @@
         lastActivity = Date.now();
         if (warningShown) {
           warningShown = false;
-          if (typeof showToast === 'function') {
-            showToast('Session active. Idle logout reset.', 'info', { duration: 3000 });
-          }
         }
       };
 
