@@ -13950,7 +13950,29 @@
         const activeClass = (_selectedMailId === m.id && _selectedMailFolder === m.folder) ? 'is-active' : '';
         const hasUnread = t.emails.some(msg => msg.unread);
         const unreadClass = hasUnread ? 'is-unread' : '';
-        const displaySender = _currentMailTab === 'sent' ? `To: ${m.to}` : m.fromName;
+        let displaySender = m.fromName;
+        if (_currentMailTab === 'sent') {
+          const rawTo = m.to || '';
+          let cleanEmail = rawTo.trim();
+          let extractedName = '';
+          const emailMatch = rawTo.match(/<([^>]+)>/);
+          if (emailMatch) {
+            cleanEmail = emailMatch[1].trim().toLowerCase();
+            extractedName = rawTo.replace(/<[^>]+>/, '').trim();
+          } else {
+            cleanEmail = cleanEmail.toLowerCase();
+          }
+
+          let matchedName = extractedName;
+          if (window.db) {
+            const lead = (window.db.leads || []).find(l => l.contactEmail && l.contactEmail.toLowerCase() === cleanEmail);
+            const client = (window.db.clients || []).find(c => c.contactEmail && c.contactEmail.toLowerCase() === cleanEmail);
+            if (lead) matchedName = lead.contactName;
+            else if (client) matchedName = client.contactName || client.name;
+          }
+
+          displaySender = matchedName ? `To: ${matchedName}` : `To: ${rawTo}`;
+        }
         const isReply = !!(m.inReplyTo);
 
         let snippetSrc = m.body || '';
@@ -14091,7 +14113,33 @@
           const snippet = snippetLines.join(' ').trim().substring(0, 80) + (snippetLines.join(' ').trim().length > 80 ? '…' : '');
 
           const isMe = m.folder === 'sent' || (currentUser() && m.fromEmail && m.fromEmail.toLowerCase() === currentUser().email.toLowerCase());
-          const displaySender = isMe ? 'Me' : m.fromName;
+          let displaySender = m.fromName || m.fromEmail;
+          if (isMe) {
+            const rawTo = m.to || '';
+            let cleanEmail = rawTo.trim();
+            let extractedName = '';
+            const emailMatch = rawTo.match(/<([^>]+)>/);
+            if (emailMatch) {
+              cleanEmail = emailMatch[1].trim().toLowerCase();
+              extractedName = rawTo.replace(/<[^>]+>/, '').trim();
+            } else {
+              cleanEmail = cleanEmail.toLowerCase();
+            }
+
+            let matchedName = extractedName;
+            if (window.db) {
+              const lead = (window.db.leads || []).find(l => l.contactEmail && l.contactEmail.toLowerCase() === cleanEmail);
+              const client = (window.db.clients || []).find(c => c.contactEmail && c.contactEmail.toLowerCase() === cleanEmail);
+              if (lead) matchedName = lead.contactName;
+              else if (client) matchedName = client.contactName || client.name;
+            }
+
+            if (matchedName) {
+              displaySender = `${matchedName} <${cleanEmail}>`;
+            } else {
+              displaySender = rawTo || 'Unknown Recipient';
+            }
+          }
 
           header.innerHTML = `
             <input type="checkbox" class="mail-msg-select-check" data-id="${m.id}" data-folder="${m.folder}" onclick="event.stopPropagation(); window.onMailMsgCheckChange();" style="margin-right: 8px; cursor: pointer; width: 14px; height: 14px; flex-shrink: 0;">
