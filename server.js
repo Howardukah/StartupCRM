@@ -938,12 +938,20 @@ function normalizeLoginEmail(email) {
 }
 
 
-// ── Supabase-backed persistent login rate-limiting ────────────────────────────
-// Persists across server restarts and works across multiple instances.
-// Locks are keyed by BOTH normalized email AND client IP, checked independently.
-// Falls back to allowing login if Supabase is unavailable (graceful degradation).
+// ── Hybrid RAM + Supabase Persistent Login Rate-Limiting ────────────────────
+// 1. Checks Node.js RAM first for 0ms instant response during active attacks (0 DB queries).
+// 2. Persists locks to Supabase so rate-limits survive server restarts & redeploys.
+
+const ramLockCache = new Map(); // key -> lockedUntilMs
 
 async function isLocked(key) {
+  // 1. Fast path: check Node.js RAM cache first (0ms, 0 DB queries)
+  const ramExpiry = ramLockCache.get(key);
+  if (ramExpiry) {
+    if (Date.now() < ramExpiry) return true;
+    ramLockCache.delete(key); // lock expired, remove from RAM
+  }
+
   if (!supabase) return false;
   try {
     const { data } = await supabase
@@ -951,7 +959,15 @@ async function isLocked(key) {
       .select('locked_until')
       .eq('key', key)
       .maybeSingle();
-    return !!(data?.locked_until && new Date(data.locked_until) > new Date());
+
+    if (data?.locked_until) {
+      const lockMs = new Date(data.locked_until).getTime();
+      if (lockMs > Date.now()) {
+        ramLockCache.set(key, lockMs); // populate RAM cache for future attempts
+        return true;
+      }
+    }
+    return false;
   } catch { return false; }
 }
 
@@ -964,20 +980,26 @@ async function recordFailure(key) {
       .eq('key', key)
       .maybeSingle();
     const newCount = (data?.fail_count || 0) + 1;
-    const lockedUntil = newCount >= 5
-      ? new Date(Date.now() + 15 * 60 * 1000).toISOString()
-      : null;
+    const lockExpiryMs = newCount >= 5 ? Date.now() + 15 * 60 * 1000 : null;
+    const lockedUntil = lockExpiryMs ? new Date(lockExpiryMs).toISOString() : null;
+
+    if (lockExpiryMs) {
+      ramLockCache.set(key, lockExpiryMs); // Store in RAM instantly
+    }
+
     await supabase.from('login_attempts').upsert({
       key,
       fail_count: newCount,
       locked_until: lockedUntil,
       updated_at: new Date().toISOString()
     });
+
     return newCount >= 5;
   } catch { return false; }
 }
 
 async function clearAttempts(key) {
+  ramLockCache.delete(key); // Clear from RAM
   if (!supabase) return;
   try {
     await supabase.from('login_attempts').delete().eq('key', key);
