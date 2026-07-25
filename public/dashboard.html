@@ -14231,6 +14231,14 @@
 
       if (!_activeKebabTarget || _activeKebabTarget.mailId !== mailId) {
         _activeKebabTarget = { mailId, folder, hasUnread };
+
+        // Hide "Mark as read/unread" for sent and drafts — read state is irrelevant there
+        const markBtn = document.getElementById('kebab-mark-btn');
+        if (markBtn) {
+          const showMark = folder !== 'sent' && folder !== 'drafts';
+          markBtn.style.display = showMark ? '' : 'none';
+        }
+
         const textSpan = document.getElementById('kebab-mark-text');
         if (textSpan) {
           textSpan.textContent = hasUnread ? 'Mark as read' : 'Mark as unread';
