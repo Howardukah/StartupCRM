@@ -1135,11 +1135,10 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             </span>
             <input type="email" id="signin-user" class="fl-input" placeholder="email"
-              oninput="document.getElementById('signin-error').textContent=''"
               onkeydown="if(event.key==='Enter') submitEmail()" />
             <label class="fl-label" for="signin-user">Email Id</label>
           </div>
-          <p class="error-text" id="signin-error"></p>
+
           <div style="display:flex; justify-content:center; margin-top:0.5rem;">
             <button type="button" class="btn-primary" id="btn-continue" onclick="submitEmail()" style="width:auto; min-width:160px; padding:12px 36px;">Continue</button>
           </div>
@@ -1168,7 +1167,7 @@
           </div>
           <a href="#" id="signin-forgot-pw" class="forgot-pw" onclick="event.preventDefault(); alert('Please ask your CRM Admin to reset your password.')">forgot password?</a>
 
-          <p class="error-text" id="signin-pw-error"></p>
+
           <div style="display:flex; justify-content:center; margin-top:0.5rem;">
             <button type="button" class="btn-primary" id="btn-signin" onclick="submitSignIn()" style="width:auto; min-width:160px; padding:12px 36px;">Login</button>
           </div>
@@ -1983,17 +1982,14 @@
 
     function submitEmail() {
       const emailInput = document.getElementById('signin-user');
-      const err = document.getElementById('signin-error');
       const email = emailInput.value.trim();
-      err.textContent = '';
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!email) { showFormError('signin-error', 'Please enter your email address.'); return; }
-      if (!emailRegex.test(email)) { showFormError('signin-error', 'Please enter a valid email address.'); return; }
+      if (!email) { showToast('Please enter your email address.', 'error'); return; }
+      if (!emailRegex.test(email)) { showToast('Please enter a valid email address.', 'error'); return; }
       document.getElementById('signin-email-display').textContent = email;
       document.getElementById('signin-email-step').style.display = 'none';
       document.getElementById('signin-password-step').style.display = 'block';
       document.getElementById('signin-password').value = '';
-      document.getElementById('signin-pw-error').textContent = '';
       setTimeout(() => document.getElementById('signin-password').focus(), 50);
     }
 
@@ -2001,17 +1997,14 @@
       e.preventDefault();
       document.getElementById('signin-password-step').style.display = 'none';
       document.getElementById('signin-email-step').style.display = 'block';
-      document.getElementById('signin-pw-error').textContent = '';
       setTimeout(() => document.getElementById('signin-user').focus(), 50);
     }
 
     async function submitSignIn() {
       const email = document.getElementById('signin-user').value.trim();
       const pwInput = document.getElementById('signin-password');
-      const err = document.getElementById('signin-pw-error');
-      err.textContent = '';
-      if (!email) { showFormError('signin-error', 'Please enter your email address.'); return; }
-      if (!pwInput || !pwInput.value) { showFormError('signin-pw-error', 'Please enter your password.'); return; }
+      if (!email) { showToast('Please enter your email address.', 'error'); return; }
+      if (!pwInput || !pwInput.value) { showToast('Please enter your password.', 'error'); return; }
       setBtnLoading('btn-signin', true);
       const ctrl = new AbortController();
       const timeout = setTimeout(() => ctrl.abort(), 60000); // 60-second hard timeout (Render free-tier cold start)
@@ -2024,7 +2017,11 @@
         });
         clearTimeout(timeout);
         const data = await res.json();
-        if (!res.ok) { showToast(data.error || 'Incorrect credentials.', 'error'); setBtnLoading('btn-signin', false); return; }
+        if (!res.ok) {
+          showToast('Incorrect credentials. Check login credentials and try again.', 'error');
+          setBtnLoading('btn-signin', false);
+          return;
+        }
         if (data.mustChangePassword) {
           pendingMustChangePwUserId = data.userId;
           document.getElementById('newpw-1').value = '';
@@ -2037,7 +2034,6 @@
         if (data.securityQuestionRequired) {
           pendingSecurityUserId = data.userId;
           securityQuestionFailCount = 0;
-          // Reset the challenge dropdown and answer
           document.getElementById('challenge-security-question').value = '';
           document.getElementById('cs-challenge-question-display').textContent = 'Select your security question';
           document.getElementById('cs-challenge-question-display').classList.add('placeholder');
@@ -2050,7 +2046,6 @@
         if (data.profileSetupRequired) {
           pendingSessionToken = data.token;
           pendingUserId = data.userId;
-          // Mark profile setup as pending so a refresh doesn't skip to dashboard
           localStorage.setItem('crm-profile-setup-pending', '1');
           localStorage.setItem('crm-session-token', data.token);
           localStorage.setItem('crm-current-user', data.userId);
@@ -2067,7 +2062,7 @@
         const msg = e.name === 'AbortError'
           ? 'Server took too long to respond. It may be starting up — please try again in a moment.'
           : 'Could not reach server. Check your connection and try again.';
-        showFormError('signin-pw-error', msg);
+        showToast(msg, 'error');
         setBtnLoading('btn-signin', false);
       }
     }

@@ -77,7 +77,7 @@ app.post('/api/auth/login', async (req, res) => {
   const { userId, password } = req.body;
   const submittedNorm = normalizeLoginEmail(userId);
   const member = (_db.team || []).find(m => normalizeLoginEmail(m.id) === submittedNorm || normalizeLoginEmail(m.email) === submittedNorm);
-  if (!member) return res.status(401).json({ error: 'Incorrect credentials.' });
+  if (!member) return res.status(401).json({ error: 'Incorrect credentials. Check login credentials and try again.' });
   if (member.status === 'Suspended') return res.status(403).json({ error: 'Credentials restricted.' });
   let passwordOk = false;
   try {
@@ -86,7 +86,7 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (e) {
     passwordOk = password === 'test1234';
   }
-  if (!passwordOk) return res.status(401).json({ error: 'Incorrect credentials.' });
+  if (!passwordOk) return res.status(401).json({ error: 'Incorrect credentials. Check login credentials and try again.' });
   if (member.mustChangePassword) return res.json({ ok: true, mustChangePassword: true, userId: member.id });
   const token = crypto.randomUUID();
   sessions.set(token, { userId: member.id, expires: Date.now() + 86400000 });

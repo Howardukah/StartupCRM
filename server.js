@@ -961,7 +961,7 @@ app.post('/api/auth/login', async (req, res) => {
       loginAttempts.set(key, a);
     };
 
-    if (!member) { fail(); return res.status(401).json({ error: 'Incorrect credentials.' }); }
+    if (!member) { fail(); return res.status(401).json({ error: 'Incorrect credentials. Check login credentials and try again.' }); }
     if (member.status === 'Suspended') {
       return res.status(403).json({ error: 'Credentials restricted. Contact admin.' });
     }
@@ -977,7 +977,7 @@ app.post('/api/auth/login', async (req, res) => {
         member.suspiciousLoginAttempt = true;
         await setCrmData(data);
       }
-      return res.status(401).json({ error: 'Incorrect credentials.' });
+      return res.status(401).json({ error: 'Incorrect credentials. Check login credentials and try again.' });
     }
 
     // Auto-hash plaintext password if needed
