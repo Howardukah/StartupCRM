@@ -23452,42 +23452,46 @@
   <script>
     (function () {
       let lastActivity = Date.now();
-      const maxIdleMs = 30 * 60 * 1000; // 30 minutes
-      const warningStartMs = 25 * 60 * 1000; // 25 minutes
-      let countdownInterval = null;
-      let warningActive = false;
+      const maxIdleMs    = 30 * 60 * 1000; // 30 minutes total idle before logout
+      const warningStartMs = 25 * 60 * 1000; // show warning at 25 minutes idle
+      const WARNING_SECS = 5 * 60;           // countdown duration: 5 minutes
 
+      let countdownInterval = null;
+      let warningActive     = false;
+      let timeLeft          = WARNING_SECS;
+
+      // ── Show the pinned countdown toast ──────────────────────────────────
       function showCountdownToast() {
         if (warningActive) return;
         warningActive = true;
+        timeLeft = WARNING_SECS;
+
+        // Optional: play a short alert tone
         try {
           const AudioContext = window.AudioContext || window.webkitAudioContext;
           if (AudioContext) {
-            const ctx = new AudioContext();
+            const ctx  = new AudioContext();
             const osc1 = ctx.createOscillator();
             const osc2 = ctx.createOscillator();
             const gain = ctx.createGain();
-            osc1.type = 'sine';
-            osc2.type = 'triangle';
+            osc1.type = 'sine';      osc2.type = 'triangle';
             osc1.frequency.value = 1108.7;
             osc2.frequency.value = 1661.2;
-            osc1.connect(gain);
-            osc2.connect(gain);
-            gain.connect(ctx.destination);
+            osc1.connect(gain); osc2.connect(gain); gain.connect(ctx.destination);
             gain.gain.setValueAtTime(0, ctx.currentTime);
             gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.02);
             gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-            osc1.start(ctx.currentTime);
-            osc2.start(ctx.currentTime);
-            osc1.stop(ctx.currentTime + 0.6);
-            osc2.stop(ctx.currentTime + 0.6);
+            osc1.start(ctx.currentTime); osc2.start(ctx.currentTime);
+            osc1.stop(ctx.currentTime + 0.6); osc2.stop(ctx.currentTime + 0.6);
           }
-        } catch (e) { }
+        } catch (e) {}
 
-        if (window.Notification && Notification.permission === "granted") {
-          new Notification("Session Expiring", { body: "You will be logged out in 5 minutes due to inactivity." });
+        // Optional: system notification
+        if (window.Notification && Notification.permission === 'granted') {
+          new Notification('Session Expiring', { body: 'You will be logged out in 5 minutes due to inactivity.' });
         }
 
+        // Build toast
         let container = document.getElementById('slide-toast-container');
         if (!container) {
           container = document.createElement('div');
@@ -23498,75 +23502,83 @@
         const el = document.createElement('div');
         el.id = 'inactivity-warning-toast';
         el.className = 'slide-toast slide-toast--warn';
-        el.style.position = 'relative';
-        el.style.overflow = 'hidden';
+        el.style.cssText = 'position:relative;overflow:hidden;';
         el.innerHTML = `
-          <div class="slide-toast__icon-wrap" style="background: rgba(245, 158, 11, 0.12); color: var(--warn);">
+          <div class="slide-toast__icon-wrap" style="background:rgba(245,158,11,0.12);color:var(--warn);">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </div>
           <div class="slide-toast__content">
             <div class="slide-toast__title">Inactivity Warning</div>
-            <div class="slide-toast__desc">You will be logged out in <strong id="inactivity-countdown" style="color:var(--warn)">05:00</strong> due to inactivity.</div>
+            <div class="slide-toast__desc">You will be logged out in <strong id="inactivity-countdown" style="color:var(--warn);font-variant-numeric:tabular-nums;">05:00</strong> due to inactivity.<br><span style="font-size:11px;opacity:0.7;">Move or click anywhere to stay logged in.</span></div>
           </div>
           <div id="inactivity-progress" style="position:absolute;bottom:0;left:0;height:4px;background:var(--warn);width:100%;transition:width 1s linear;"></div>
         `;
         container.appendChild(el);
         setTimeout(() => el.classList.add('show'), 50);
 
-        let timeLeft = Math.floor((maxIdleMs - (Date.now() - lastActivity)) / 1000);
-        const totalWarningTime = Math.floor((maxIdleMs - warningStartMs) / 1000);
+        // Tick the countdown every second — independent of idle tracking
         countdownInterval = setInterval(() => {
-          timeLeft--;
-          if (timeLeft < 0) timeLeft = 0;
+          timeLeft = Math.max(0, timeLeft - 1);
           const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
           const s = (timeLeft % 60).toString().padStart(2, '0');
+
           const cdEl = document.getElementById('inactivity-countdown');
           if (cdEl) cdEl.textContent = `${m}:${s}`;
 
           const pEl = document.getElementById('inactivity-progress');
-          if (pEl) {
-            const pct = (timeLeft / totalWarningTime) * 100;
-            pEl.style.width = `${pct}%`;
-          }
+          if (pEl) pEl.style.width = `${(timeLeft / WARNING_SECS) * 100}%`;
         }, 1000);
       }
 
-      function removeCountdownToast() {
+      // ── Dismiss the toast (called on activity or actual logout) ───────────
+      function removeCountdownToast(resumed) {
         warningActive = false;
-        if (countdownInterval) {
-          clearInterval(countdownInterval);
-          countdownInterval = null;
-        }
+        if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
         const el = document.getElementById('inactivity-warning-toast');
         if (el) {
           el.classList.remove('show');
           setTimeout(() => el.remove(), 450);
         }
+        // Show a brief "session resumed" confirmation when user acted
+        if (resumed && typeof showToast === 'function') {
+          showToast('Session resumed. Welcome back!', 'success');
+        }
       }
 
+      // ── Main idle-check loop ──────────────────────────────────────────────
       const idleInterval = setInterval(() => {
         const idleMs = Date.now() - lastActivity;
 
         if (idleMs >= warningStartMs && idleMs < maxIdleMs) {
+          // Show warning toast — it will count down its own fixed 5-min timer
           showCountdownToast();
         }
+
         if (idleMs >= maxIdleMs) {
           clearInterval(idleInterval);
-          removeCountdownToast();
+          removeCountdownToast(false);
           if (typeof backToSignIn === 'function') backToSignIn();
           else window.location.href = '/';
         }
       }, 1000);
 
+      // ── Activity detection — resets idle timer and dismisses toast ────────
       const resetIdle = () => {
+        const wasWarning = warningActive;
         lastActivity = Date.now();
-        if (warningActive) removeCountdownToast();
+        if (wasWarning) {
+          // Activity during the countdown: stop the timer and dismiss toast
+          removeCountdownToast(true);
+        }
       };
+
       window.addEventListener('mousemove', resetIdle, { passive: true });
-      window.addEventListener('keydown', resetIdle, { passive: true });
-      window.addEventListener('click', resetIdle, { passive: true });
-      window.addEventListener('scroll', resetIdle, { passive: true });
+      window.addEventListener('keydown',   resetIdle, { passive: true });
+      window.addEventListener('click',     resetIdle, { passive: true });
+      window.addEventListener('scroll',    resetIdle, { passive: true });
+      window.addEventListener('touchstart',resetIdle, { passive: true });
     })();
+
 
     function submitSheetLead() {
       const m = document.getElementById('modal-sheet-lead');
