@@ -21383,11 +21383,19 @@
       
       let bdayStr = '—';
       if (m.birthday) {
-        const parts = m.birthday.split('-');
-        if (parts.length === 3) {
-          bdayStr = new Date(parts[0], parts[1]-1, parts[2]).toLocaleDateString('en', { month: 'long', day: 'numeric', year: 'numeric' });
+        const slashParts = m.birthday.split('/');
+        const dashParts = m.birthday.split('-');
+        if (slashParts.length === 3) {
+          // Stored as DD/MM/YYYY — parse manually to avoid JS treating it as MM/DD/YYYY
+          const [dd, mm, yyyy] = slashParts.map(Number);
+          const d = new Date(yyyy, mm - 1, dd);
+          bdayStr = isNaN(d) ? m.birthday : d.toLocaleDateString('en', { month: 'long', day: 'numeric', year: 'numeric' });
+        } else if (dashParts.length === 3) {
+          // Stored as YYYY-MM-DD (ISO)
+          const d = new Date(dashParts[0], dashParts[1] - 1, dashParts[2]);
+          bdayStr = isNaN(d) ? m.birthday : d.toLocaleDateString('en', { month: 'long', day: 'numeric', year: 'numeric' });
         } else {
-          bdayStr = new Date(m.birthday).toLocaleDateString('en', { month: 'long', day: 'numeric', year: 'numeric' });
+          bdayStr = m.birthday; // Unknown format — display as-is
         }
       }
       modal.querySelector('#mp-info-birthday').value = bdayStr;
