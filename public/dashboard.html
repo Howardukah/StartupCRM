@@ -14492,7 +14492,7 @@
 
                 // Build a clean HTML string — no multiline template literals in the write
                 const headCss = [
-                  'html,body{margin:8px;padding:0;font-family:sans-serif;font-size:14px;line-height:1.6;word-break:break-word;',
+                  'html,body{margin:8px;padding:0;font-family:sans-serif;font-size:14px;line-height:1.6;word-break:break-word;overflow:hidden;',
                   'background:' + bgColor + ' !important;color:' + fgColor + ' !important;}',
                   'blockquote,.gmail_quote,.yahoo_quoted,.outlook_quoted,#isReplyContent{display:none;}',
                   '.qtbtn{background:none;border:1px solid ' + quoteBtnBorder + ';border-radius:4px;',
@@ -14540,6 +14540,20 @@
                   '</body></html>'
                 );
                 iframeDoc.close();
+                // Immediate height set — don't wait for postMessage round-trip
+                requestAnimationFrame(() => {
+                  try {
+                    const h = iframe.contentDocument.body.scrollHeight;
+                    if (h > 40) iframe.style.height = (h + 16) + 'px';
+                  } catch(e) {}
+                });
+                // Fallback after images/fonts load
+                setTimeout(() => {
+                  try {
+                    const h = iframe.contentDocument.body.scrollHeight;
+                    if (h > 40) iframe.style.height = (h + 16) + 'px';
+                  } catch(e) {}
+                }, 500);
               } catch (e) {
                 console.warn('iframe write error:', e);
               }
