@@ -926,6 +926,17 @@ app.post('/webhooks/inbound-mail', async (req, res) => {
   }
 });
 
+
+// Normalize login email: strip dots from local part only, lowercase.
+// Allows howard.ukah@... and howardukah@... to match the same account.
+// IMPORTANT: Only used for login lookups — never modifies stored email values.
+function normalizeLoginEmail(email) {
+  const str = String(email || '').trim().toLowerCase();
+  const at = str.indexOf('@');
+  if (at <= 0) return str;
+  return str.slice(0, at).replace(/\./g, '') + str.slice(at);
+}
+
 const loginAttempts = new Map();
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
@@ -940,7 +951,8 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const data = await getCrmData();
-    const member = (data.team || []).find(m => m.id === userId || (m.email && m.email.toLowerCase() === String(userId).toLowerCase().trim()));
+    const submittedNorm = normalizeLoginEmail(userId);
+    const member = (data.team || []).find(m => normalizeLoginEmail(m.id) === submittedNorm || normalizeLoginEmail(m.email) === submittedNorm);
 
     const fail = () => {
       const a = loginAttempts.get(key) || { count: 0, first: Date.now() };
@@ -949,7 +961,7 @@ app.post('/api/auth/login', async (req, res) => {
       loginAttempts.set(key, a);
     };
 
-    if (!member) { fail(); return res.status(401).json({ error: 'Account not found.' }); }
+    if (!member) { fail(); return res.status(401).json({ error: 'Incorrect credentials.' }); }
     if (member.status === 'Suspended') {
       return res.status(403).json({ error: 'Credentials restricted. Contact admin.' });
     }
@@ -965,7 +977,7 @@ app.post('/api/auth/login', async (req, res) => {
         member.suspiciousLoginAttempt = true;
         await setCrmData(data);
       }
-      return res.status(401).json({ error: 'Incorrect password.' });
+      return res.status(401).json({ error: 'Incorrect credentials.' });
     }
 
     // Auto-hash plaintext password if needed
@@ -1097,7 +1109,8 @@ app.post('/api/auth/verify-security-question', async (req, res) => {
     };
 
     const data = await getCrmData();
-    const memberIndex = (data.team || []).findIndex(m => m.id === userId || (m.email && m.email.toLowerCase() === String(userId).toLowerCase().trim()));
+    const submittedNorm = normalizeLoginEmail(userId);
+    const memberIndex = (data.team || []).findIndex(m => normalizeLoginEmail(m.id) === submittedNorm || normalizeLoginEmail(m.email) === submittedNorm);
     if (memberIndex === -1) {
       fail();
       return res.status(404).json({ error: 'User not found.' });

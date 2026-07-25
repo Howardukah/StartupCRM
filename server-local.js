@@ -64,10 +64,20 @@ app.post('/api/auth/setup', async (req, res) => {
   res.json({ ok: true, token, userId: adminMember?.id });
 });
 
+
+// Dot-insensitive email matching — local part only, consistent with server.js
+function normalizeLoginEmail(email) {
+  const str = String(email || '').trim().toLowerCase();
+  const at = str.indexOf('@');
+  if (at <= 0) return str;
+  return str.slice(0, at).replace(/\./g, '') + str.slice(at);
+}
+
 app.post('/api/auth/login', async (req, res) => {
   const { userId, password } = req.body;
-  const member = (_db.team || []).find(m => m.id === userId || (m.email && m.email.toLowerCase() === String(userId).toLowerCase().trim()));
-  if (!member) return res.status(401).json({ error: 'Account not found.' });
+  const submittedNorm = normalizeLoginEmail(userId);
+  const member = (_db.team || []).find(m => normalizeLoginEmail(m.id) === submittedNorm || normalizeLoginEmail(m.email) === submittedNorm);
+  if (!member) return res.status(401).json({ error: 'Incorrect credentials.' });
   if (member.status === 'Suspended') return res.status(403).json({ error: 'Credentials restricted.' });
   let passwordOk = false;
   try {
@@ -76,7 +86,7 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (e) {
     passwordOk = password === 'test1234';
   }
-  if (!passwordOk) return res.status(401).json({ error: 'Incorrect password.' });
+  if (!passwordOk) return res.status(401).json({ error: 'Incorrect credentials.' });
   if (member.mustChangePassword) return res.json({ ok: true, mustChangePassword: true, userId: member.id });
   const token = crypto.randomUUID();
   sessions.set(token, { userId: member.id, expires: Date.now() + 86400000 });

@@ -1151,7 +1151,7 @@
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:1.5rem; padding:10px 14px; background:rgba(47,214,228,0.06); border:1.5px solid rgba(47,214,228,0.2); border-radius:12px;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2FD6E4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             <span id="signin-email-display" style="font-size:0.88rem; color:var(--text-muted-alt); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
-            <a href="#" onclick="changeEmail(event)" style="font-size:0.8rem; color:#2FD6E4; text-decoration:none; white-space:nowrap; flex-shrink:0; font-weight:500;">Change</a>
+            <a href="#" id="signin-change-email" onclick="changeEmail(event)" style="font-size:0.8rem; color:#2FD6E4; text-decoration:none; white-space:nowrap; flex-shrink:0; font-weight:500;">Change</a>
           </div>
 
           <!-- Password floating label -->
@@ -1166,7 +1166,7 @@
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
-          <a href="#" class="forgot-pw" onclick="event.preventDefault(); alert('Please ask your CRM Admin to reset your password.')">forgot password?</a>
+          <a href="#" id="signin-forgot-pw" class="forgot-pw" onclick="event.preventDefault(); alert('Please ask your CRM Admin to reset your password.')">forgot password?</a>
 
           <p class="error-text" id="signin-pw-error"></p>
           <div style="display:flex; justify-content:center; margin-top:0.5rem;">
@@ -1740,6 +1740,17 @@
       btn.classList.toggle('btn-loading', loading);
       btn.disabled = !!loading;
       btn.setAttribute('aria-busy', loading ? 'true' : 'false');
+      // Lock/unlock the Change-email and Forgot-password links during sign-in
+      if (id === 'btn-signin') {
+        ['signin-change-email', 'signin-forgot-pw'].forEach(linkId => {
+          const link = document.getElementById(linkId);
+          if (link) {
+            link.style.pointerEvents = loading ? 'none' : '';
+            link.style.opacity = loading ? '0.5' : '';
+            link.setAttribute('aria-disabled', loading ? 'true' : 'false');
+          }
+        });
+      }
     }
 
     /* ============ USER-FRIENDLY ERROR HANDLING ============ */
@@ -2013,7 +2024,7 @@
         });
         clearTimeout(timeout);
         const data = await res.json();
-        if (!res.ok) { showFormError('signin-pw-error', data.error, 'Login failed.'); setBtnLoading('btn-signin', false); return; }
+        if (!res.ok) { showToast(data.error || 'Incorrect credentials.', 'error'); setBtnLoading('btn-signin', false); return; }
         if (data.mustChangePassword) {
           pendingMustChangePwUserId = data.userId;
           document.getElementById('newpw-1').value = '';
