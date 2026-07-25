@@ -1900,7 +1900,6 @@
     let pendingSessionToken = null;
     let pendingUserId = null;
     let pendingSecurityUserId = null;
-    let securityQuestionFailCount = 0;
     const API_BASE = ''; // Same-origin: frontend and backend served from the same server
 
     function showStep(name) {
@@ -2018,7 +2017,12 @@
         clearTimeout(timeout);
         const data = await res.json();
         if (!res.ok) {
-          showToast('Incorrect credentials. Check login credentials and try again.', 'error');
+          if (res.status === 429) {
+            showToast('Login restricted. Try again in 15 minutes.', 'error');
+            setBtnLoading('btn-signin', false);
+            return;
+          }
+          showToast(data.error || 'Incorrect credentials. Check login credentials and try again.', 'error');
           setBtnLoading('btn-signin', false);
           return;
         }
@@ -2033,7 +2037,6 @@
         }
         if (data.securityQuestionRequired) {
           pendingSecurityUserId = data.userId;
-          securityQuestionFailCount = 0;
           document.getElementById('challenge-security-question').value = '';
           document.getElementById('cs-challenge-question-display').textContent = 'Select your security question';
           document.getElementById('cs-challenge-question-display').classList.add('placeholder');
@@ -2224,8 +2227,7 @@
         });
         const data = await res.json();
         if (!res.ok) {
-          securityQuestionFailCount++;
-          if (securityQuestionFailCount >= 5 || res.status === 429) {
+          if (res.status === 429) {
             const modal = document.getElementById('lockout-modal');
             if (modal) modal.classList.remove('hidden');
             setBtnLoading('btn-challenge', false);

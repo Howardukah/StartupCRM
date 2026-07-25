@@ -937,43 +937,87 @@ function normalizeLoginEmail(email) {
   return str.slice(0, at).replace(/\./g, '') + str.slice(at);
 }
 
-const loginAttempts = new Map();
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS = 15 * 60 * 1000;
+
+// ── Supabase-backed persistent login rate-limiting ────────────────────────────
+// Persists across server restarts and works across multiple instances.
+// Locks are keyed by BOTH normalized email AND client IP, checked independently.
+// Falls back to allowing login if Supabase is unavailable (graceful degradation).
+
+async function isLocked(key) {
+  if (!supabase) return false;
+  try {
+    const { data } = await supabase
+      .from('login_attempts')
+      .select('locked_until')
+      .eq('key', key)
+      .maybeSingle();
+    return !!(data?.locked_until && new Date(data.locked_until) > new Date());
+  } catch { return false; }
+}
+
+async function recordFailure(key) {
+  if (!supabase) return false;
+  try {
+    const { data } = await supabase
+      .from('login_attempts')
+      .select('fail_count')
+      .eq('key', key)
+      .maybeSingle();
+    const newCount = (data?.fail_count || 0) + 1;
+    const lockedUntil = newCount >= 5
+      ? new Date(Date.now() + 15 * 60 * 1000).toISOString()
+      : null;
+    await supabase.from('login_attempts').upsert({
+      key,
+      fail_count: newCount,
+      locked_until: lockedUntil,
+      updated_at: new Date().toISOString()
+    });
+    return newCount >= 5;
+  } catch { return false; }
+}
+
+async function clearAttempts(key) {
+  if (!supabase) return;
+  try {
+    await supabase.from('login_attempts').delete().eq('key', key);
+  } catch { /* non-fatal */ }
+}
+
 
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { userId, password } = req.body;
-    const key = String(userId || '').toLowerCase().trim();
-    const attempt = loginAttempts.get(key);
-    if (attempt && attempt.count >= MAX_ATTEMPTS && Date.now() - attempt.first < LOCKOUT_MS) {
-      return res.status(429).json({ error: 'Too many failed attempts. Try again in 15 minutes.' });
+    const submittedNorm = normalizeLoginEmail(userId);
+    const emailKey = 'email:' + submittedNorm;
+    const ipKey = 'ip:' + requestIp(req);
+
+    // Check persistent locks BEFORE touching any user data
+    const [emailLocked, ipLocked] = await Promise.all([isLocked(emailKey), isLocked(ipKey)]);
+    if (emailLocked || ipLocked) {
+      return res.status(429).json({ error: 'Login restricted. Try again in 15 minutes.' });
     }
 
     const data = await getCrmData();
-    const submittedNorm = normalizeLoginEmail(userId);
     const member = (data.team || []).find(m => normalizeLoginEmail(m.id) === submittedNorm || normalizeLoginEmail(m.email) === submittedNorm);
 
-    const fail = () => {
-      const a = loginAttempts.get(key) || { count: 0, first: Date.now() };
-      a.count += 1;
-      if (a.count === 1) a.first = Date.now();
-      loginAttempts.set(key, a);
-    };
-
-    if (!member) { fail(); return res.status(401).json({ error: 'Incorrect credentials. Check login credentials and try again.' }); }
+    if (!member) {
+      await Promise.all([recordFailure(emailKey), recordFailure(ipKey)]);
+      return res.status(401).json({ error: 'Incorrect credentials. Check login credentials and try again.' });
+    }
     if (member.status === 'Suspended') {
       return res.status(403).json({ error: 'Credentials restricted. Contact admin.' });
     }
+
     const isHashed = member.password && BCRYPT_PREFIX.test(member.password);
     const passwordOk = isHashed
       ? await bcrypt.compare(password || '', member.password)
       : (member.password && String(password) === String(member.password));
 
     if (!passwordOk) {
-      fail();
-      const currentAttempt = loginAttempts.get(key);
-      if (currentAttempt && currentAttempt.count >= MAX_ATTEMPTS) {
+      const [emailTripped, ipTripped] = await Promise.all([recordFailure(emailKey), recordFailure(ipKey)]);
+      if (emailTripped || ipTripped) {
+        // 5th failure — flag account for security review
         member.suspiciousLoginAttempt = true;
         await setCrmData(data);
       }
@@ -985,6 +1029,7 @@ app.post('/api/auth/login', async (req, res) => {
       member.password = await bcrypt.hash(String(password), 10);
       await setCrmData(data);
     }
+
     const currentIp = requestIp(req);
     let ipMismatched = false;
     if (member.lastLoginIp && member.lastLoginIp !== currentIp && member.securityQuestion) {
@@ -1031,7 +1076,6 @@ app.post('/api/auth/login', async (req, res) => {
 </body>
 </html>`;
 
-        // Non-blocking background send with fallback engine (Resend / Brevo API / SMTP)
         sendMailWithFallback({
           from: `"${fromName}" <${fromAddr}>`,
           to: toEmail,
@@ -1045,17 +1089,17 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     if (member.suspiciousLoginAttempt && member.securityQuestion) {
-      loginAttempts.delete(key);
+      // Don't clear attempts here — they're cleared after security question passes
       return res.json({ ok: true, securityQuestionRequired: true, userId: member.id });
     }
 
+    // Successful login — clear rate-limit records
+    await Promise.all([clearAttempts(emailKey), clearAttempts(ipKey)]);
 
-    // Update IP and clear suspicious flag
     member.lastLoginIp = currentIp;
     member.suspiciousLoginAttempt = false;
     await setCrmData(data);
 
-    loginAttempts.delete(key);
     if (member.mustChangePassword) {
       return res.json({ ok: true, mustChangePassword: true, userId: member.id });
     }
@@ -1094,25 +1138,20 @@ app.post('/api/auth/verify-security-question', async (req, res) => {
       return res.status(400).json({ error: 'User ID, security question, and security answer are required.' });
     }
 
-    // Enforce the same lockout as the login endpoint
-    const key = String(userId).toLowerCase().trim();
-    const attempt = loginAttempts.get(key);
-    if (attempt && attempt.count >= MAX_ATTEMPTS && Date.now() - attempt.first < LOCKOUT_MS) {
-      return res.status(429).json({ error: 'Too many failed attempts. Try again in 15 minutes.' });
+    const submittedNorm = normalizeLoginEmail(userId);
+    const emailKey = 'email:' + submittedNorm;
+    const ipKey = 'ip:' + requestIp(req);
+
+    // Enforce the same persistent lock as the login endpoint
+    const [emailLocked, ipLocked] = await Promise.all([isLocked(emailKey), isLocked(ipKey)]);
+    if (emailLocked || ipLocked) {
+      return res.status(429).json({ error: 'Login restricted. Try again in 15 minutes.' });
     }
 
-    const fail = () => {
-      const a = loginAttempts.get(key) || { count: 0, first: Date.now() };
-      a.count += 1;
-      if (a.count === 1) a.first = Date.now();
-      loginAttempts.set(key, a);
-    };
-
     const data = await getCrmData();
-    const submittedNorm = normalizeLoginEmail(userId);
     const memberIndex = (data.team || []).findIndex(m => normalizeLoginEmail(m.id) === submittedNorm || normalizeLoginEmail(m.email) === submittedNorm);
     if (memberIndex === -1) {
-      fail();
+      await Promise.all([recordFailure(emailKey), recordFailure(ipKey)]);
       return res.status(404).json({ error: 'User not found.' });
     }
 
@@ -1123,7 +1162,7 @@ app.post('/api/auth/verify-security-question', async (req, res) => {
 
     // Verify the user selected the correct question
     if (securityQuestion !== member.securityQuestion) {
-      fail();
+      await Promise.all([recordFailure(emailKey), recordFailure(ipKey)]);
       return res.status(401).json({ error: 'Incorrect security question or answer.' });
     }
 
@@ -1131,16 +1170,17 @@ app.post('/api/auth/verify-security-question', async (req, res) => {
     const answerOk = await bcrypt.compare(normalized, member.securityAnswer);
 
     if (!answerOk) {
-      fail();
+      await Promise.all([recordFailure(emailKey), recordFailure(ipKey)]);
       return res.status(401).json({ error: 'Incorrect security question or answer.' });
     }
+
+    // Correct answer — clear locks and complete login
+    await Promise.all([clearAttempts(emailKey), clearAttempts(ipKey)]);
 
     member.suspiciousLoginAttempt = false;
     const currentIp = requestIp(req);
     member.lastLoginIp = currentIp;
     await setCrmData(data);
-
-    loginAttempts.delete(key);
 
     const token = signToken(member.id, Date.now() + 86400000);
 
