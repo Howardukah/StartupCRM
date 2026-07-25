@@ -14470,33 +14470,94 @@
 
           if (m.html) {
             const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-            const bodyColor = isDark ? '#FFFFFF' : '#111111';
             const quoteBtnBorder = isDark ? '#3C4045' : '#e0e0e0';
             const quoteBtnHover = isDark ? '#2B2E32' : '#f5f5f5';
+            const fgColor = isDark ? '#FFFFFF' : '#111111';
+            const linkColor = isDark ? '#38bdf8' : '#0284c7';
 
-            const themeOverrideCss = isDark ? `
-              html, body, html *, body * { background-color: transparent !important; background: transparent !important; color: #FFFFFF !important; }
-              a, a * { color: #38bdf8 !important; }
-            ` : `
-              html, body { background: transparent; color: #111111; }
-              a { color: #0284c7; }
-            `;
+            // CSS injected in <head> — baseline reset
+            const baseCss = `html,body{font-family:sans-serif;font-size:14px;margin:8px;word-break:break-word;background:transparent !important;color:${fgColor};}blockquote,.gmail_quote,.yahoo_quoted,.outlook_quoted,#isReplyContent{display:none;}.quote-toggle-btn{background:none;border:1px solid ${quoteBtnBorder};border-radius:4px;padding:3px 8px;font-size:11px;color:${isDark ? '#A4A6A2' : '#888'};cursor:pointer;margin-top:8px;display:inline-block;}.quote-toggle-btn:hover{background:${quoteBtnHover};}`;
+
+            // CSS appended AFTER m.html — overrides embedded <style> blocks in email
+            const overrideCss = `html,body,html *,body *{background-color:transparent !important;background:transparent !important;color:${fgColor} !important;}a,a *{color:${linkColor} !important;}`;
 
             const iframe = document.createElement('iframe');
             iframe.setAttribute('sandbox', 'allow-same-origin');
-            iframe.style.cssText = 'width:100%;border:none;min-height:40px;background:transparent;';
+            // Force the iframe element itself to have the right background — no flash
+            iframe.style.cssText = `width:100%;border:none;min-height:40px;display:block;background:transparent;`;
             iframe.title = 'Email content';
             msgBody.appendChild(iframe);
-            
+
             setTimeout(() => {
               try {
                 const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
                 iframeDoc.open();
-                iframeDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{font-family:sans-serif;font-size:14px;margin:8px;word-break:break-word;background:transparent !important;}blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent { display: none; }.quote-toggle-btn { background: none; border: 1px solid ${quoteBtnBorder}; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: ${isDark ? '#A4A6A2 !important' : '#888888'}; cursor: pointer; margin-top: 8px; display: inline-block; }.quote-toggle-btn:hover { background: ${quoteBtnHover}; }</style></head><body>${m.html}<style>${themeOverrideCss}</style>\<script\>const quotes = document.querySelectorAll('blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent');if (quotes.length > 0) { const btn = document.createElement('button'); btn.className = 'quote-toggle-btn'; btn.textContent = '▶ Show quoted text'; btn.onclick = function() { const isHidden = quotes[0].style.display !== 'block'; quotes.forEach(q => { q.style.display = isHidden ? 'block' : 'none'; }); btn.textContent = isHidden ? '▼ Hide quoted text' : '▶ Show quoted text'; window.parent.postMessage({ type: 'resize-iframe', id: '${m.id}', height: document.body.scrollHeight }, '*'); }; document.body.appendChild(btn); }\<\/script\></body></html>`);
+                iframeDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>${baseCss}</style></head><body>${m.html}<style>${overrideCss}</style>\<script\>(function(){
+  var fgColor='${fgColor}';
+  var isDark=${isDark};
+
+  // DOM scrub: remove bgcolor / background inline attrs that CSS cannot override
+  function scrubBg(root) {
+    var all = root.querySelectorAll('*');
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      el.removeAttribute('bgcolor');
+      el.removeAttribute('background');
+      var s = el.getAttribute('style');
+      if (s) {
+        var cleaned = s
+          .replace(/background(-color)?\\s*:[^;]+;?/gi, '')
+          .replace(/\\bcolor\\s*:[^;]+;?/gi, '')
+          .trim();
+        if (cleaned !== s) el.setAttribute('style', cleaned);
+      }
+    }
+    root.body.style.setProperty('color', fgColor, 'important');
+    root.body.style.setProperty('background', 'transparent', 'important');
+  }
+  scrubBg(document);
+
+  // Height sync
+  function syncHeight() {
+    try {
+      var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+      window.parent.postMessage({ type: 'resize-iframe', id: '${m.id}', height: h }, '*');
+    } catch(e) {}
+  }
+
+  // Fire immediately, then again after images/fonts settle
+  syncHeight();
+  setTimeout(syncHeight, 200);
+  setTimeout(syncHeight, 500);
+
+  // ResizeObserver for dynamic content (quote toggle, images)
+  try {
+    var ro = new ResizeObserver(syncHeight);
+    ro.observe(document.body);
+  } catch(e) {}
+
+  // Handle images loading after initial paint
+  var imgs = document.querySelectorAll('img');
+  imgs.forEach(function(img) {
+    if (!img.complete) img.addEventListener('load', syncHeight);
+  });
+
+  // Quote toggle
+  var quotes = document.querySelectorAll('blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent');
+  if (quotes.length > 0) {
+    var btn = document.createElement('button');
+    btn.className = 'quote-toggle-btn';
+    btn.textContent = '▶ Show quoted text';
+    btn.onclick = function() {
+      var isHidden = quotes[0].style.display !== 'block';
+      quotes.forEach(function(q) { q.style.display = isHidden ? 'block' : 'none'; });
+      btn.textContent = isHidden ? '▼ Hide quoted text' : '▶ Show quoted text';
+      setTimeout(syncHeight, 50);
+    };
+    document.body.appendChild(btn);
+  }
+})();\<\/script\></body></html>`);
                 iframeDoc.close();
-                setTimeout(() => {
-                  try { iframe.style.height = (iframe.contentDocument.body.scrollHeight + 16) + 'px'; } catch(e) {}
-                }, 100);
               } catch (e) {
                 console.warn(e);
               }
@@ -14558,6 +14619,21 @@
       updateMailboxLayoutClass();
     }
 
+    // Parent-side postMessage listener: receives height updates from iframe email bodies
+    // and resizes the iframe element to match content — no scrollbars, no race conditions.
+    window.addEventListener('message', function(event) {
+      if (!event.data || event.data.type !== 'resize-iframe') return;
+      var id = event.data.id;
+      var height = event.data.height;
+      if (!id || !height) return;
+      // Find the iframe inside the message card that owns this mail id
+      var card = document.getElementById('msg-' + id);
+      if (!card) return;
+      var iframe = card.querySelector('iframe');
+      if (iframe) {
+        iframe.style.height = (parseInt(height, 10) + 16) + 'px';
+      }
+    });
 
     /* ---- download an attachment from a synced email ---- */
     async function mailDownloadAttachment(folder, uid, index, filename) {
