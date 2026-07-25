@@ -14470,96 +14470,78 @@
 
           if (m.html) {
             const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-            const quoteBtnBorder = isDark ? '#3C4045' : '#e0e0e0';
-            const quoteBtnHover = isDark ? '#2B2E32' : '#f5f5f5';
-            const fgColor = isDark ? '#FFFFFF' : '#111111';
+            // Use exact theme surface colors — no transparency tricks
+            const bgColor   = isDark ? '#1A1D20' : '#FFFFFF';
+            const fgColor   = isDark ? '#F2F2EF' : '#111111';
             const linkColor = isDark ? '#38bdf8' : '#0284c7';
-
-            // CSS injected in <head> — baseline reset
-            const baseCss = `html,body{font-family:sans-serif;font-size:14px;margin:8px;word-break:break-word;background:transparent !important;color:${fgColor};}blockquote,.gmail_quote,.yahoo_quoted,.outlook_quoted,#isReplyContent{display:none;}.quote-toggle-btn{background:none;border:1px solid ${quoteBtnBorder};border-radius:4px;padding:3px 8px;font-size:11px;color:${isDark ? '#A4A6A2' : '#888'};cursor:pointer;margin-top:8px;display:inline-block;}.quote-toggle-btn:hover{background:${quoteBtnHover};}`;
-
-            // CSS appended AFTER m.html — overrides embedded <style> blocks in email
-            const overrideCss = `html,body,html *,body *{background-color:transparent !important;background:transparent !important;color:${fgColor} !important;}a,a *{color:${linkColor} !important;}`;
+            const quoteBtnBorder = isDark ? '#3C4045' : '#e0e0e0';
+            const quoteBtnHover  = isDark ? '#2B2E32' : '#f5f5f5';
+            const quoteBtnColor  = isDark ? '#A4A6A2' : '#888888';
 
             const iframe = document.createElement('iframe');
             iframe.setAttribute('sandbox', 'allow-same-origin');
-            // Force the iframe element itself to have the right background — no flash
-            iframe.style.cssText = `width:100%;border:none;min-height:40px;display:block;background:transparent;`;
+            // Solid matching bg on the iframe element itself — prevents any flash of white
+            iframe.style.cssText = `width:100%;border:none;min-height:40px;display:block;overflow:hidden;background:${bgColor};`;
             iframe.title = 'Email content';
+            msgBody.style.background = bgColor;
             msgBody.appendChild(iframe);
 
             setTimeout(() => {
               try {
                 const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+
+                // Build a clean HTML string — no multiline template literals in the write
+                const headCss = [
+                  'html,body{margin:8px;padding:0;font-family:sans-serif;font-size:14px;line-height:1.6;word-break:break-word;',
+                  'background:' + bgColor + ' !important;color:' + fgColor + ' !important;}',
+                  'blockquote,.gmail_quote,.yahoo_quoted,.outlook_quoted,#isReplyContent{display:none;}',
+                  '.qtbtn{background:none;border:1px solid ' + quoteBtnBorder + ';border-radius:4px;',
+                  'padding:3px 8px;font-size:11px;color:' + quoteBtnColor + ';cursor:pointer;margin-top:8px;display:inline-block;}',
+                  '.qtbtn:hover{background:' + quoteBtnHover + ';}'
+                ].join('');
+
+                // Override CSS injected AFTER m.html to beat any embedded <style> blocks in email
+                const tailCss = [
+                  'html,body,*{background-color:' + bgColor + ' !important;background:' + bgColor + ' !important;color:' + fgColor + ' !important;}',
+                  'a,a *{color:' + linkColor + ' !important;}'
+                ].join('');
+
+                // Compact inline script (single expression)
+                const inlineScript = '(function(){' +
+                  'var all=document.querySelectorAll("*");' +
+                  'for(var i=0;i<all.length;i++){' +
+                    'var el=all[i];' +
+                    'el.removeAttribute("bgcolor");' +
+                    'el.removeAttribute("background");' +
+                    'var s=el.getAttribute("style");' +
+                    'if(s){' +
+                      'var c=s.replace(/background(-color)?\\s*:[^;]+;?/gi,"").replace(/\\bcolor\\s*:[^;]+;?/gi,"").trim();' +
+                      'if(c!==s)el.setAttribute("style",c);' +
+                    '}' +
+                  '}' +
+                  'document.body.style.setProperty("background","' + bgColor + '","important");' +
+                  'document.body.style.setProperty("color","' + fgColor + '","important");' +
+                  'function sh(){try{var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);window.parent.postMessage({type:"resize-iframe",id:"' + m.id + '",height:h},"*");}catch(e){}}' +
+                  'sh();setTimeout(sh,150);setTimeout(sh,400);' +
+                  'try{var ro=new ResizeObserver(sh);ro.observe(document.body);}catch(e){}' +
+                  'document.querySelectorAll("img").forEach(function(img){if(!img.complete)img.addEventListener("load",sh);});' +
+                  'var qs=document.querySelectorAll("blockquote,.gmail_quote,.yahoo_quoted,.outlook_quoted,#isReplyContent");' +
+                  'if(qs.length>0){var b=document.createElement("button");b.className="qtbtn";b.textContent="▶ Show quoted text";' +
+                  'b.onclick=function(){var h=qs[0].style.display!=="block";qs.forEach(function(q){q.style.display=h?"block":"none";});' +
+                  'b.textContent=h?"▼ Hide quoted text":"▶ Show quoted text";setTimeout(sh,50);};document.body.appendChild(b);}' +
+                '})();';
+
                 iframeDoc.open();
-                iframeDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>${baseCss}</style></head><body>${m.html}<style>${overrideCss}</style>\<script\>(function(){
-  var fgColor='${fgColor}';
-  var isDark=${isDark};
-
-  // DOM scrub: remove bgcolor / background inline attrs that CSS cannot override
-  function scrubBg(root) {
-    var all = root.querySelectorAll('*');
-    for (var i = 0; i < all.length; i++) {
-      var el = all[i];
-      el.removeAttribute('bgcolor');
-      el.removeAttribute('background');
-      var s = el.getAttribute('style');
-      if (s) {
-        var cleaned = s
-          .replace(/background(-color)?\\s*:[^;]+;?/gi, '')
-          .replace(/\\bcolor\\s*:[^;]+;?/gi, '')
-          .trim();
-        if (cleaned !== s) el.setAttribute('style', cleaned);
-      }
-    }
-    root.body.style.setProperty('color', fgColor, 'important');
-    root.body.style.setProperty('background', 'transparent', 'important');
-  }
-  scrubBg(document);
-
-  // Height sync
-  function syncHeight() {
-    try {
-      var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-      window.parent.postMessage({ type: 'resize-iframe', id: '${m.id}', height: h }, '*');
-    } catch(e) {}
-  }
-
-  // Fire immediately, then again after images/fonts settle
-  syncHeight();
-  setTimeout(syncHeight, 200);
-  setTimeout(syncHeight, 500);
-
-  // ResizeObserver for dynamic content (quote toggle, images)
-  try {
-    var ro = new ResizeObserver(syncHeight);
-    ro.observe(document.body);
-  } catch(e) {}
-
-  // Handle images loading after initial paint
-  var imgs = document.querySelectorAll('img');
-  imgs.forEach(function(img) {
-    if (!img.complete) img.addEventListener('load', syncHeight);
-  });
-
-  // Quote toggle
-  var quotes = document.querySelectorAll('blockquote, .gmail_quote, .yahoo_quoted, .outlook_quoted, #isReplyContent');
-  if (quotes.length > 0) {
-    var btn = document.createElement('button');
-    btn.className = 'quote-toggle-btn';
-    btn.textContent = '▶ Show quoted text';
-    btn.onclick = function() {
-      var isHidden = quotes[0].style.display !== 'block';
-      quotes.forEach(function(q) { q.style.display = isHidden ? 'block' : 'none'; });
-      btn.textContent = isHidden ? '▼ Hide quoted text' : '▶ Show quoted text';
-      setTimeout(syncHeight, 50);
-    };
-    document.body.appendChild(btn);
-  }
-})();\<\/script\></body></html>`);
+                iframeDoc.write(
+                  '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + headCss + '</style></head>' +
+                  '<body>' + m.html +
+                  '<style>' + tailCss + '</style>' +
+                  '<script>' + inlineScript + '<\/script>' +
+                  '</body></html>'
+                );
                 iframeDoc.close();
               } catch (e) {
-                console.warn(e);
+                console.warn('iframe write error:', e);
               }
             }, 0);
           } else {
