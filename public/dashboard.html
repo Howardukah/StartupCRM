@@ -10666,14 +10666,7 @@
           </div>
           <div class="field">
             <label class="field__label">Birthday</label>
-            <div class="crm-datepicker" id="dp-myprof-birthday">
-              <button type="button" class="crm-datepicker__trigger field__input" id="dp-myprof-birthday-trigger" onclick="toggleDatepicker('dp-myprof-birthday')">
-                <span class="crm-datepicker__display" id="dp-myprof-birthday-display">Select date</span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:.5"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-              </button>
-              <input type="hidden" id="myprof-birthday">
-              <div class="crm-datepicker__panel" id="dp-myprof-birthday-panel" style="display:none;"></div>
-            </div>
+            <input type="text" class="field__input" id="myprof-birthday" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10" oninput="formatBirthdayInput(this)">
           </div>
           <div class="field">
             <label class="field__label">Gender</label>
@@ -21007,6 +21000,18 @@
       }
     });
 
+    function formatBirthdayInput(input) {
+      let digits = input.value.replace(/\D/g, '');
+      if (digits.length > 8) digits = digits.slice(0, 8);
+      let formatted = digits;
+      if (digits.length > 4) {
+        formatted = digits.slice(0, 2) + '/' + digits.slice(2, 4) + '/' + digits.slice(4);
+      } else if (digits.length > 2) {
+        formatted = digits.slice(0, 2) + '/' + digits.slice(2);
+      }
+      input.value = formatted;
+    }
+
     function openMyProfileModal() {
       const u = currentUser();
       if (!u) return;
@@ -21052,7 +21057,7 @@
       modal.querySelector('#myprof-name').value = u.name || '';
       modal.querySelector('#myprof-role').value = u.role || '';
       modal.querySelector('#myprof-email').value = u.email || '';
-      setDatepickerValue('dp-myprof-birthday', u.birthday || '');
+      modal.querySelector('#myprof-birthday').value = u.birthday || '';
       modal.querySelector('#myprof-gender').value = u.sex || '';
       modal.querySelector('#myprof-pemail').value = u.personalEmail || '';
       modal.querySelector('#myprof-mobile').value = u.mobileNumber || '';
