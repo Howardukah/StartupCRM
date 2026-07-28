@@ -3855,13 +3855,13 @@ app.post('/api/projects/create-asset-bucket', validateSession, async (req, res) 
 
     if (toEmail && project) {
       try {
-        const mailer = getMailer();
-        if (!mailer) {
-          console.warn('SMTP not configured -- skipping asset bucket email.');
+        const hasMailProvider = !!(process.env.RESEND_API_KEY || process.env.BREVO_API_KEY);
+        if (!hasMailProvider) {
+          console.warn('No mail provider configured -- skipping asset bucket email.');
           emailSkipped = true;
         } else {
           const fromName = process.env.SMTP_FROM_NAME || 'Startup Build';
-          const fromAddr = process.env.SMTP_USER;
+          const fromAddr = process.env.RESEND_FROM_EMAIL || process.env.SMTP_USER || 'noreply@startupbuild.tech';
           const supportEmail = process.env.SUPPORT_EMAIL || 'support@startupbuild.tech';
 
           const greetingH1 = toName ? `Welcome aboard, ${toName}!` : 'Welcome aboard!';
@@ -3932,19 +3932,20 @@ app.post('/api/projects/create-asset-bucket', validateSession, async (req, res) 
             portalHtml = rendered.html;
           }
 
-          await mailer.sendMail({
+          await sendMailWithFallback({
             from: `"${fromName}" <${fromAddr}>`,
             to: toName ? `"${toName}" <${toEmail}>` : toEmail,
             subject: portalSubject,
             html: portalHtml,
           });
           emailSent = true;
-          console.log(`Email sent to ${toEmail} for project ${projectDisplayName}`);
+          console.log(`Asset bucket email sent to ${toEmail} for project ${projectDisplayName} via API`);
         }
       } catch (emailErr) {
         console.warn('Could not send asset bucket email:', emailErr.message);
       }
-    }
+    } // end if (toEmail && project)
+
     res.json({
       ok: true,
       bucketId: bucket.id,
