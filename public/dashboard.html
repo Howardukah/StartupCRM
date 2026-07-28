@@ -17602,14 +17602,15 @@
       }
     }
     function cleanupEmptySprints(p) {
-      if (!p || !Array.isArray(p.sprints)) return false;
-      const before = p.sprints.length;
-      p.sprints = p.sprints.filter(s => Array.isArray(s.tasks) && s.tasks.length > 0);
-      if (p.sprints.length !== before) {
+      if (!p || !Array.isArray(p.sprints)) return [];
+      const removedIds = p.sprints
+        .filter(s => !Array.isArray(s.tasks) || s.tasks.length === 0)
+        .map(s => s.id);
+      if (removedIds.length > 0) {
+        p.sprints = p.sprints.filter(s => Array.isArray(s.tasks) && s.tasks.length > 0);
         syncSprintMeetings(p);
-        return true;
       }
-      return false;
+      return removedIds;
     }
     function applyProjectFilter(mode, btn) {
       projectFilterMode = mode;
@@ -22097,22 +22098,26 @@
       try {
         if (!s.tasks.find(x => x.id === tid)) return; // already gone
         s.tasks = s.tasks.filter(x => x.id !== tid);
-        const sprintRemoved = cleanupEmptySprints(p);
-        if (sprintRemoved) {
-          logActivity('removed empty sprint from <b>' + escapeHTML(p.name) + '</b> after deleting its last task');
-        }
-        if (p.sprints.length === 0) {
-          logActivity('removed all empty sprints from <b>' + escapeHTML(p.name) + '</b>');
+        const removedSprintIds = cleanupEmptySprints(p);
+        if (removedSprintIds.length > 0) {
+          logActivity('auto-deleted empty sprint(s) from <b>' + escapeHTML(p.name) + '</b> after last task was removed');
         }
         handleSprintTaskCompletion(p, s);
         syncProjectLifecycleWithTasks(p);
         // Instant 0ms optimistic UI re-render
         persistAndRender([() => renderProjectDetail(pid), renderProjects, renderOverview, renderNotifications], { save: false });
 
-        // Non-blocking background API deletion
-        apiFetch('/api/projects/' + pid + '/sprints/' + sid + '/tasks/' + tid, { method: 'DELETE' }).catch(err => {
-          showToast('Could not sync deleted task: ' + (err.message || 'Error'), 'error');
-        });
+        // Fire background API: delete the task, then delete any now-empty sprints
+        apiFetch('/api/projects/' + pid + '/sprints/' + sid + '/tasks/' + tid, { method: 'DELETE' })
+          .then(() => {
+            // After server confirms task deletion, delete any sprints that became empty
+            removedSprintIds.forEach(emptySprintId => {
+              apiFetch('/api/projects/' + pid + '/sprints/' + emptySprintId, { method: 'DELETE' }).catch(() => {});
+            });
+          })
+          .catch(err => {
+            showToast('Could not sync deleted task: ' + (err.message || 'Error'), 'error');
+          });
       } finally {
         setTimeout(() => _deletingIds.delete('task:' + tid), 500);
       }

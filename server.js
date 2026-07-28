@@ -1528,15 +1528,21 @@ app.delete('/api/projects/:pid/sprints/:sid/tasks/:tid', validateSession, async 
 app.delete('/api/projects/:pid/sprints/:sid', validateSession, async (req, res) => {
   try {
     const { pid, sid } = req.params;
-    const crmData = await getCrmData();
-    const me = (crmData.team || []).find(m => m.id === req.userId);
-    if (!me || me.role !== 'Admin') return res.status(403).json({ error: 'Only admins can delete sprints.' });
-    const project = (crmData.projects || []).find(p => p && p.id === pid);
-    if (!project) return res.status(404).json({ error: 'Project not found.' });
-    project.sprints = (project.sprints || []).filter(s => s && s.id !== sid);
-    await setCrmData(crmData);
+    await withCrmWriteLock(async () => {
+      const crmData = await getCrmData();
+      const me = (crmData.team || []).find(m => m.id === req.userId);
+      const project = (crmData.projects || []).find(p => p && p.id === pid);
+      if (!project) throw new Error('NOT_FOUND');
+      const isOwnerOrLead = project.ownerId === req.userId || project.projectLeadId === req.userId;
+      const isAdminUser = !!me && me.role === 'Admin';
+      if (!isAdminUser && !isOwnerOrLead) throw new Error('FORBIDDEN');
+      project.sprints = (project.sprints || []).filter(s => s && s.id !== sid);
+      await setCrmData(crmData);
+    });
     res.json({ ok: true });
   } catch (e) {
+    if (e.message === 'FORBIDDEN') return res.status(403).json({ error: 'Only admins and project leads can delete sprints.' });
+    if (e.message === 'NOT_FOUND') return res.status(404).json({ error: 'Project not found.' });
     console.error('Delete sprint error:', e);
     res.status(500).json({ error: e.message });
   }
