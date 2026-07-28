@@ -280,7 +280,7 @@ async function setCrmData(data) {
   io.emit('db_changed');
 }
 
-app.set('trust proxy', true);
+app.set('trust proxy', 1); // Render sits behind exactly 1 proxy hop — trust only that layer
 
 function requestIp(req) {
   if (!req) return '127.0.0.1';
