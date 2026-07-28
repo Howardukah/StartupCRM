@@ -12444,12 +12444,19 @@
       if (sheet.isDefault) { showToast('"' + (sheet.name || 'This') + '" is a default sheet and can\'t be deleted.', 'warning'); return; }
       const ok = await confirmDialog('Delete "' + (sheet.name || 'this spreadsheet') + '"? This cannot be undone.', { title: 'Delete spreadsheet?', okLabel: 'Delete' });
       if (!ok) return;
-      db.spreadsheets = ensureSpreadsheets().filter(s => s.id !== sheet.id);
-      currentSSId = null;
-      currentSheetTabId = null;
-      renderSpreadsheetsList();
-      renderSpreadsheetEditor();
-      saveDB(true);
+      _deletingIds.add('ss:' + sheet.id);
+      try {
+        await apiFetch('/api/spreadsheets/' + sheet.id, { method: 'DELETE' });
+        db.spreadsheets = ensureSpreadsheets().filter(s => s.id !== sheet.id);
+        currentSSId = null;
+        currentSheetTabId = null;
+        renderSpreadsheetsList();
+        renderSpreadsheetEditor();
+      } catch (err) {
+        showToast('Could not delete spreadsheet: ' + err.message, 'error');
+      } finally {
+        _deletingIds.delete('ss:' + sheet.id);
+      }
     }
 
     /* ---- sharing ---- */
@@ -13137,11 +13144,18 @@
       if (!note) return;
       const ok = await confirmDialog('Delete "' + (note.title || 'this note') + '"? This cannot be undone.', { title: 'Delete note?', okLabel: 'Delete' });
       if (!ok) return;
-      db.notes = ensureNotes().filter(n => n.id !== note.id);
-      currentNoteId = null;
-      renderNotesList();
-      renderNoteEditor();
-      saveDB(true);
+      _deletingIds.add('note:' + note.id);
+      try {
+        await apiFetch('/api/notes/' + note.id, { method: 'DELETE' });
+        db.notes = ensureNotes().filter(n => n.id !== note.id);
+        currentNoteId = null;
+        renderNotesList();
+        renderNoteEditor();
+      } catch (err) {
+        showToast('Could not delete note: ' + err.message, 'error');
+      } finally {
+        _deletingIds.delete('note:' + note.id);
+      }
     }
 
 
@@ -20524,8 +20538,11 @@
       _deletingIds.add('client:' + id);
       try {
         if (!db.clients.find(x => x.id === id)) return; // already gone
+        await apiFetch('/api/clients/' + id, { method: 'DELETE' });
         db.clients = db.clients.filter(x => x.id !== id);
-        persistAndRender([renderClients, renderProjects, renderOverview, populateDropdowns]);
+        persistAndRender([renderClients, renderProjects, renderOverview, populateDropdowns], { save: false });
+      } catch (err) {
+        showToast('Could not delete client: ' + err.message, 'error');
       } finally {
         _deletingIds.delete('client:' + id);
       }
@@ -20726,10 +20743,12 @@
       _deletingIds.add('meeting:' + id);
       try {
         if (!db.meetings.find(x => x.id === id)) return; // already gone
+        await apiFetch('/api/meetings/' + id, { method: 'DELETE' });
         db.deletedMeetingIds = Array.from(new Set((db.deletedMeetingIds || []).concat(id)));
         db.meetings = db.meetings.filter(x => x.id !== id);
-        persistAndRender([renderMeetings, renderOverview, () => { if (currentProjectId) renderProjectDetail(currentProjectId); }]);
-        await saveDB(false);
+        persistAndRender([renderMeetings, renderOverview, () => { if (currentProjectId) renderProjectDetail(currentProjectId); }], { save: false });
+      } catch (err) {
+        showToast('Could not delete meeting: ' + err.message, 'error');
       } finally {
         _deletingIds.delete('meeting:' + id);
       }
@@ -21355,6 +21374,7 @@
       _deletingIds.add('member:' + id);
       try {
         if (!db.team.find(m => m.id === id)) return; // already gone
+        await apiFetch('/api/team/' + id, { method: 'DELETE' });
 
         db.projects.forEach(p => {
           if (p.team && p.team.includes(id)) {
@@ -21380,7 +21400,10 @@
         });
 
         db.team = db.team.filter(x => x.id !== id);
-        await saveTeamChange('Team member deleted.');
+        renderTeam();
+        renderProjects();
+      } catch (err) {
+        showToast('Could not delete team member: ' + err.message, 'error');
       } finally {
         _deletingIds.delete('member:' + id);
       }
@@ -21833,13 +21856,16 @@
       _deletingIds.add('project:' + id);
       try {
         if (!db.projects.find(x => x.id === id)) return; // already gone
+        await apiFetch('/api/projects/' + id, { method: 'DELETE' });
         db.projects = db.projects.filter(x => x.id !== id);
         logActivity('deleted project');
         if (currentProjectId === id) {
           currentProjectId = null;
           goSection('projects');
         }
-        persistAndRender([renderProjects, renderOverview]);
+        persistAndRender([renderProjects, renderOverview], { save: false });
+      } catch (err) {
+        showToast('Could not delete project: ' + err.message, 'error');
       } finally {
         _deletingIds.delete('project:' + id);
       }
@@ -22017,15 +22043,18 @@
       try {
         const p = getProject(pid);
         if (!p || !p.sprints.find(x => x.id === sid)) { return; } // already gone
+        await apiFetch('/api/projects/' + pid + '/sprints/' + sid, { method: 'DELETE' });
         p.sprints = p.sprints.filter(x => x.id !== sid);
         syncSprintMeetings(p);
-        persistAndRender([() => renderProjectDetail(pid), renderProjects, renderMeetings, renderOverview]);
+        persistAndRender([() => renderProjectDetail(pid), renderProjects, renderMeetings, renderOverview], { save: false });
+      } catch (err) {
+        showToast('Could not delete sprint: ' + err.message, 'error');
       } finally {
         _deletingIds.delete('sprint:' + sid);
       }
     }
 
-    function deleteTask(pid, sid, tid) {
+    async function deleteTask(pid, sid, tid) {
       if (_deletingIds.has('task:' + tid)) return;
       const p = getProject(pid); if (!p) return;
       const s = p.sprints.find(x => x.id === sid); if (!s) return;
@@ -22034,6 +22063,7 @@
       _deletingIds.add('task:' + tid);
       try {
         if (!s.tasks.find(x => x.id === tid)) return; // already gone
+        await apiFetch('/api/projects/' + pid + '/sprints/' + sid + '/tasks/' + tid, { method: 'DELETE' });
         s.tasks = s.tasks.filter(x => x.id !== tid);
         if (cleanupEmptySprints(p)) {
           logActivity('removed empty sprint from <b>' + p.name + '</b> after deleting its last task');
@@ -22043,7 +22073,9 @@
         }
         handleSprintTaskCompletion(p, s);
         syncProjectLifecycleWithTasks(p);
-        persistAndRender([() => renderProjectDetail(pid), renderProjects, renderOverview, renderNotifications]);
+        persistAndRender([() => renderProjectDetail(pid), renderProjects, renderOverview, renderNotifications], { save: false });
+      } catch (err) {
+        showToast('Could not delete task: ' + err.message, 'error');
       } finally {
         _deletingIds.delete('task:' + tid);
       }

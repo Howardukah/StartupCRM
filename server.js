@@ -1500,6 +1500,157 @@ app.post('/api/db', validateSession, async (req, res) => {
   }
 });
 
+/* ============ ATOMIC GRANULAR DELETE ENDPOINTS ============ */
+// DELETE /api/projects/:pid/sprints/:sid/tasks/:tid
+app.delete('/api/projects/:pid/sprints/:sid/tasks/:tid', validateSession, async (req, res) => {
+  try {
+    const { pid, sid, tid } = req.params;
+    const crmData = await getCrmData();
+    const project = (crmData.projects || []).find(p => p && p.id === pid);
+    if (!project) return res.status(404).json({ error: 'Project not found.' });
+    const sprint = (project.sprints || []).find(s => s && s.id === sid);
+    if (!sprint) return res.status(404).json({ error: 'Sprint not found.' });
+    const initialLen = (sprint.tasks || []).length;
+    sprint.tasks = (sprint.tasks || []).filter(t => t && t.id !== tid);
+    if (sprint.tasks.length === initialLen) return res.status(404).json({ error: 'Task not found.' });
+    await setCrmData(crmData);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Delete task error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/projects/:pid/sprints/:sid
+app.delete('/api/projects/:pid/sprints/:sid', validateSession, async (req, res) => {
+  try {
+    const { pid, sid } = req.params;
+    const crmData = await getCrmData();
+    const me = (crmData.team || []).find(m => m.id === req.userId);
+    if (!me || me.role !== 'Admin') return res.status(403).json({ error: 'Only admins can delete sprints.' });
+    const project = (crmData.projects || []).find(p => p && p.id === pid);
+    if (!project) return res.status(404).json({ error: 'Project not found.' });
+    project.sprints = (project.sprints || []).filter(s => s && s.id !== sid);
+    await setCrmData(crmData);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Delete sprint error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/projects/:pid
+app.delete('/api/projects/:pid', validateSession, async (req, res) => {
+  try {
+    const { pid } = req.params;
+    const crmData = await getCrmData();
+    const projToDel = (crmData.projects || []).find(x => x && x.id === pid);
+    if (projToDel && projToDel.status === 'paused') {
+      return res.status(400).json({ error: 'This project is paused and cannot be deleted.' });
+    }
+    crmData.projects = (crmData.projects || []).filter(x => x && x.id !== pid);
+    await setCrmData(crmData);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Delete project error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/clients/:id
+app.delete('/api/clients/:id', validateSession, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const crmData = await getCrmData();
+    const relProjects = (crmData.projects || []).filter(p => p && p.clientId === id);
+    if (relProjects.length > 0) {
+      return res.status(400).json({ error: 'Cannot delete a client that still has projects assigned. Remove or reassign projects first.' });
+    }
+    crmData.clients = (crmData.clients || []).filter(x => x && x.id !== id);
+    await setCrmData(crmData);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Delete client error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/meetings/:id
+app.delete('/api/meetings/:id', validateSession, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const crmData = await getCrmData();
+    const me = (crmData.team || []).find(m => m.id === req.userId);
+    if (!me || me.role !== 'Admin') return res.status(403).json({ error: 'Only admins can delete meetings.' });
+    crmData.deletedMeetingIds = Array.from(new Set([...(crmData.deletedMeetingIds || []), id]));
+    crmData.meetings = (crmData.meetings || []).filter(x => x && x.id !== id);
+    await setCrmData(crmData);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Delete meeting error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/team/:id
+app.delete('/api/team/:id', validateSession, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (id === req.userId) return res.status(400).json({ error: 'You cannot delete yourself.' });
+    const crmData = await getCrmData();
+    const me = (crmData.team || []).find(m => m.id === req.userId);
+    if (!me || me.role !== 'Admin') return res.status(403).json({ error: 'Only admins can delete team members.' });
+    const member = (crmData.team || []).find(m => m && m.id === id);
+    if (member && member.role === 'Admin') {
+      const admins = (crmData.team || []).filter(m => m && m.role === 'Admin');
+      if (admins.length <= 1) return res.status(400).json({ error: 'Cannot delete the last Admin. Promote another member first.' });
+    }
+    (crmData.projects || []).forEach(p => {
+      if (p.team && p.team.includes(id)) p.team = p.team.filter(tid => tid !== id);
+      if (p.ownerId === id) p.ownerId = req.userId;
+      if (p.projectLeadId === id) p.projectLeadId = '';
+      (p.sprints || []).forEach(s => {
+        (s.tasks || []).forEach(t => { if (t.assigneeId === id) t.assigneeId = ''; });
+      });
+    });
+    (crmData.clients || []).forEach(c => { if (c.ownerId === id) c.ownerId = req.userId; });
+    crmData.team = (crmData.team || []).filter(x => x && x.id !== id);
+    await setCrmData(crmData);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Delete member error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/notes/:id
+app.delete('/api/notes/:id', validateSession, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const crmData = await getCrmData();
+    crmData.notes = (crmData.notes || []).filter(n => !(n.id === id && n.ownerId === req.userId));
+    await setCrmData(crmData);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Delete note error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/spreadsheets/:id
+app.delete('/api/spreadsheets/:id', validateSession, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const crmData = await getCrmData();
+    crmData.spreadsheets = (crmData.spreadsheets || []).filter(s => !(s.id === id && (s.ownerId === req.userId || me?.role === 'Admin')));
+    await setCrmData(crmData);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Delete spreadsheet error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 function escapeHtml(str) {
   if (typeof str !== 'string') return '';
   return str
