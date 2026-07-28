@@ -19243,6 +19243,16 @@
     async function saveAssetEditMode(bucketId) {
       if (_savingQuota) return; // prevent double-fire from Enter + click
       _savingQuota = true;
+
+      // Immediately disable the Save button so it can't be pressed again
+      const saveBtn = document.querySelector(`[onclick="saveAssetEditMode('${bucketId}')"]`);
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        saveBtn.style.opacity = '0.6';
+        saveBtn.style.cursor = 'not-allowed';
+      }
+
       try {
         const quotaInput = document.getElementById('quota-edit-' + bucketId);
         if (quotaInput) {
@@ -19255,9 +19265,22 @@
                 await fetchCrmData();
               } else {
                 showToast(res.error || 'Error saving quota', 'error');
+                // Restore button on error so user can retry
+                if (saveBtn) {
+                  saveBtn.disabled = false;
+                  saveBtn.textContent = 'Save';
+                  saveBtn.style.opacity = '';
+                  saveBtn.style.cursor = '';
+                }
               }
             } catch (e) {
               showToast('Error saving quota', 'error');
+              if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save';
+                saveBtn.style.opacity = '';
+                saveBtn.style.cursor = '';
+              }
             }
           }
         }
