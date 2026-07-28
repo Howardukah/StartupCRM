@@ -855,7 +855,8 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
   const storagePill      = document.getElementById('storage-pill');
   const storagePillLabel = document.getElementById('storage-pill-label');
   const storagePillFill  = document.getElementById('storage-pill-fill');
-  const STORAGE_LIMIT_BYTES = 10 * 1024 * 1024; // 10 MB per-project limit
+  const STORAGE_LIMIT_BYTES = 10 * 1024 * 1024; // 10 MB default (overridden by server quota per project)
+  let activeProjectQuotaBytes = STORAGE_LIMIT_BYTES; // updated on each project load
   const assetsGrid   = document.getElementById('assets-grid');
   const roleBadge    = document.getElementById('role-badge');
   const navProjectName = document.getElementById('nav-project-name');
@@ -1115,6 +1116,7 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
       if (!r.ok) throw new Error(res.error || 'Access denied.');
 
       allAssets = res.assets || [];
+      activeProjectQuotaBytes = res.quotaBytes || STORAGE_LIMIT_BYTES;
       const name = res.projectName || projectName || projectsMap[projectId] || 'Project Assets';
       activeNameEl.textContent = name;
 
@@ -1138,10 +1140,11 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
     statCountEl.textContent = `${assets.length} file${assets.length !== 1 ? 's' : ''}`;
     const totalBytes = assets.reduce((s, a) => s + parseInt(a.size_bytes || 0), 0);
     const usedMB = totalBytes / (1024 * 1024);
-    const limitMB = STORAGE_LIMIT_BYTES / (1024 * 1024);
-    const percent = Math.min(100, (totalBytes / STORAGE_LIMIT_BYTES) * 100);
+    const limitBytes = activeProjectQuotaBytes || STORAGE_LIMIT_BYTES;
+    const limitMB = limitBytes / (1024 * 1024);
+    const percent = Math.min(100, (totalBytes / limitBytes) * 100);
 
-    storagePillLabel.textContent = `${usedMB < 10 ? usedMB.toFixed(1) : Math.round(usedMB)} MB / ${limitMB} MB`;
+    storagePillLabel.textContent = `${usedMB < 1 ? usedMB.toFixed(2) : usedMB < 10 ? usedMB.toFixed(1) : Math.round(usedMB)} MB / ${limitMB % 1 === 0 ? limitMB : limitMB.toFixed(0)} MB`;
     storagePillFill.style.width = `${percent}%`;
     storagePill.title = `${usedMB.toFixed(1)} MB of ${limitMB} MB used`;
     storagePill.classList.remove('warn', 'full');

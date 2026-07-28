@@ -4137,7 +4137,9 @@ app.get('/api/storage/projects/:projectId/assets', validateSession, async (req, 
       .eq('project_id', req.params.projectId)
       .order('uploaded_at', { ascending: false });
     const project = (crmData.projects || []).find(p => p.id === req.params.projectId);
-    res.json({ ok: true, projectName: project ? project.name : 'Project Assets', assets: data || [] });
+    const customQuota = project?.assetBucketConfig?.customQuotaBytes;
+    const quotaBytes = customQuota ? parseInt(customQuota) : CLIENT_QUOTA_BYTES;
+    res.json({ ok: true, projectName: project ? project.name : 'Project Assets', assets: data || [], quotaBytes });
     appendActivity(makeActivityEntry(req, {
       actorId: req.userId,
       actorName: memberLabel(crmData, req.userId),
