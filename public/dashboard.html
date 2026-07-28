@@ -18264,7 +18264,7 @@
       syncProjectLifecycleWithTasks(p);
       persistAndRender([() => renderProjectDetail(pid), renderProjects, renderOverview, renderNotifications], { save: false });
       try {
-        await saveDB(false);
+        await apiFetch('/api/projects/' + pid + '/sprints/' + sid + '/tasks/' + tid, { method: 'PUT', body: JSON.stringify({ task: t }) });
         _localMutationUntil = Date.now() + 8000;
       } catch (err) {
         t.done = previous.done;
@@ -20409,6 +20409,7 @@
           p.assetUrl = assetUrl;
           p.zohoMeetingLink = zohoMeetingLink;
           p.projectLeadId = projectLeadId;
+          apiFetch('/api/projects/' + editingProjectId, { method: 'PUT', body: JSON.stringify({ project: p }) }).catch(() => {});
         }
         editingProjectId = null;
       } else {
@@ -20441,6 +20442,7 @@
 
         db.projects.push(newProj);
         logActivity('created new project <b>' + escapeHTML(name) + '</b>');
+        apiFetch('/api/projects', { method: 'POST', body: JSON.stringify({ project: newProj }) }).catch(() => {});
 
         // Clear draft for this client upon successful project creation
         delete newProjectDrafts[clientId];
@@ -20448,6 +20450,7 @@
       }
 
       closeModal('modal-project');
+      persistAndRender([renderProjects, renderOverview], { save: false });
       persistAndRender([renderProjects, renderOverview, populateDropdowns]);
       showToast('Project created successfully!', 'success');
     }
@@ -20493,17 +20496,20 @@
           cl.followupDate = followupDate;
           cl.ownerId = ownerId;
           cl.notes = notes;
+          apiFetch('/api/clients/' + editingClientId, { method: 'PUT', body: JSON.stringify({ client: cl }) }).catch(() => {});
         }
         editingClientId = null;
       } else {
-        db.clients.push({ id: uid('cli'), name, company, industry, email: email || '', phone: phone || '', followupDate, ownerId, notes, status: 'Prospect' });
+        const newClient = { id: uid('cli'), name, company, industry, email: email || '', phone: phone || '', followupDate, ownerId, notes, status: 'Prospect' };
+        db.clients.push(newClient);
+        apiFetch('/api/clients', { method: 'POST', body: JSON.stringify({ client: newClient }) }).catch(() => {});
       }
       m.querySelectorAll('input,textarea').forEach(el => el.value = '');
       m.querySelector('.c-name').removeAttribute('readonly');
       m.querySelector('.modal__title').textContent = 'Add client';
       m.querySelector('.btn--primary').textContent = 'Add client';
       m.classList.remove('is-open');
-      persistAndRender([renderClients, renderOverview, populateDropdowns]);
+      persistAndRender([renderClients, renderOverview, populateDropdowns], { save: false });
     }
 
     function editClient(id) {
@@ -22019,11 +22025,13 @@
           sprint.name = name;
           sprint.range = range;
           logActivity('updated sprint <b>' + name + '</b> in <b>' + p.name + '</b>');
+          apiFetch('/api/projects/' + currentProjectId + '/sprints/' + editingSprintId, { method: 'PUT', body: JSON.stringify({ sprint }) }).catch(() => {});
         }
       } else {
-        const newIdx = p.sprints.length;
-        p.sprints.push({ id: uid('spr'), name, range, status: 'active', tasks: [], comments: [] });
+        const newSprint = { id: uid('spr'), name, range, status: 'active', tasks: [], comments: [] };
+        p.sprints.push(newSprint);
         logActivity('created sprint <b>' + name + '</b> in <b>' + p.name + '</b>');
+        apiFetch('/api/projects/' + currentProjectId + '/sprints', { method: 'POST', body: JSON.stringify({ sprint: newSprint }) }).catch(() => {});
       }
       syncSprintMeetings(p);
       editingSprintId = null;
@@ -22031,7 +22039,7 @@
       m.querySelector('.modal__title').textContent = 'New sprint';
       m.querySelector('.btn--primary').textContent = 'Create sprint';
       m.classList.remove('is-open');
-      persistAndRender([() => renderProjectDetail(currentProjectId), renderProjects, renderMeetings, renderOverview]);
+      persistAndRender([() => renderProjectDetail(currentProjectId), renderProjects, renderMeetings, renderOverview], { save: false });
     }
 
     async function deleteSprint(pid, sid) {
@@ -22518,7 +22526,7 @@
       openModal('modal-task');
     }
 
-    function addTask() {
+    async function addTask() {
       const m = document.getElementById('modal-task');
       const title = m.querySelector('.t-title').value.trim();
       if (!title || !currentProjectId || !taskTargetSprintId) return;
@@ -22533,20 +22541,23 @@
         if (assigneeId && assigneeId !== currentUserId && assigneeId !== oldAssignee) {
           addNotification(assigneeId, '<b>' + escapeHTML(displayNameFor(currentUserId)) + '</b> assigned you to task <b>' + escapeHTML(title) + '</b> in <b>' + escapeHTML(s.name) + '</b>.', p.id, { actorId: currentUserId });
         }
+        apiFetch('/api/projects/' + currentProjectId + '/sprints/' + taskTargetSprintId + '/tasks/' + taskEditingTaskId, { method: 'PUT', body: JSON.stringify({ task }) }).catch(() => {});
       } else {
         if (!canEditProject(currentProjectId)) return;
-        s.tasks.push({ id: uid('tsk'), title, assigneeId, done: false, createdAt: now() });
+        const newTask = { id: uid('tsk'), title, assigneeId, done: false, createdAt: now() };
+        s.tasks.push(newTask);
         s.reviewNotified = false;
         if (assigneeId && assigneeId !== currentUserId) {
           addNotification(assigneeId, '<b>' + escapeHTML(displayNameFor(currentUserId)) + '</b> assigned you to task <b>' + escapeHTML(title) + '</b> in <b>' + escapeHTML(s.name) + '</b>.', p.id, { actorId: currentUserId });
         }
+        apiFetch('/api/projects/' + currentProjectId + '/sprints/' + taskTargetSprintId + '/tasks', { method: 'POST', body: JSON.stringify({ task: newTask }) }).catch(() => {});
       }
       taskEditingTaskId = null;
       m.querySelectorAll('input').forEach(el => el.value = '');
       m.classList.remove('is-open');
       handleSprintTaskCompletion(p, s);
       syncProjectLifecycleWithTasks(p);
-      persistAndRender([() => renderProjectDetail(currentProjectId), renderProjects, renderOverview, renderNotifications]);
+      persistAndRender([() => renderProjectDetail(currentProjectId), renderProjects, renderOverview, renderNotifications], { save: false });
     }
 
     /* ============ ROLE HELPERS ============ */

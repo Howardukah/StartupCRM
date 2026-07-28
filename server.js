@@ -1642,11 +1642,303 @@ app.delete('/api/spreadsheets/:id', validateSession, async (req, res) => {
   try {
     const { id } = req.params;
     const crmData = await getCrmData();
+    const me = (crmData.team || []).find(m => m.id === req.userId);
     crmData.spreadsheets = (crmData.spreadsheets || []).filter(s => !(s.id === id && (s.ownerId === req.userId || me?.role === 'Admin')));
     await setCrmData(crmData);
     res.json({ ok: true });
   } catch (e) {
     console.error('Delete spreadsheet error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ============ ATOMIC GRANULAR CREATE & UPDATE ENDPOINTS ============ */
+
+// ── TASKS ──
+// POST /api/projects/:pid/sprints/:sid/tasks (Create Task)
+app.post('/api/projects/:pid/sprints/:sid/tasks', validateSession, async (req, res) => {
+  try {
+    const { pid, sid } = req.params;
+    const { task } = req.body || {};
+    if (!task || !task.id || !task.title) return res.status(400).json({ error: 'Invalid task payload.' });
+    const crmData = await getCrmData();
+    const project = (crmData.projects || []).find(p => p && p.id === pid);
+    if (!project) return res.status(404).json({ error: 'Project not found.' });
+    const sprint = (project.sprints || []).find(s => s && s.id === sid);
+    if (!sprint) return res.status(404).json({ error: 'Sprint not found.' });
+    sprint.tasks = sprint.tasks || [];
+    const existingIdx = sprint.tasks.findIndex(t => t.id === task.id);
+    if (existingIdx !== -1) {
+      sprint.tasks[existingIdx] = { ...sprint.tasks[existingIdx], ...task };
+    } else {
+      sprint.tasks.push(task);
+    }
+    await setCrmData(crmData);
+    res.json({ ok: true, task });
+  } catch (e) {
+    console.error('Create task error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/projects/:pid/sprints/:sid/tasks/:tid (Update / Toggle Task)
+app.put('/api/projects/:pid/sprints/:sid/tasks/:tid', validateSession, async (req, res) => {
+  try {
+    const { pid, sid, tid } = req.params;
+    const updates = req.body || {};
+    const crmData = await getCrmData();
+    const project = (crmData.projects || []).find(p => p && p.id === pid);
+    if (!project) return res.status(404).json({ error: 'Project not found.' });
+    const sprint = (project.sprints || []).find(s => s && s.id === sid);
+    if (!sprint) return res.status(404).json({ error: 'Sprint not found.' });
+    const task = (sprint.tasks || []).find(t => t && t.id === tid);
+    if (!task) return res.status(404).json({ error: 'Task not found.' });
+    Object.assign(task, updates.task || updates);
+    await setCrmData(crmData);
+    res.json({ ok: true, task });
+  } catch (e) {
+    console.error('Update task error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── SPRINTS ──
+// POST /api/projects/:pid/sprints (Create Sprint)
+app.post('/api/projects/:pid/sprints', validateSession, async (req, res) => {
+  try {
+    const { pid } = req.params;
+    const { sprint } = req.body || {};
+    if (!sprint || !sprint.id || !sprint.name) return res.status(400).json({ error: 'Invalid sprint payload.' });
+    const crmData = await getCrmData();
+    const project = (crmData.projects || []).find(p => p && p.id === pid);
+    if (!project) return res.status(404).json({ error: 'Project not found.' });
+    project.sprints = project.sprints || [];
+    const idx = project.sprints.findIndex(s => s.id === sprint.id);
+    if (idx !== -1) {
+      project.sprints[idx] = { ...project.sprints[idx], ...sprint };
+    } else {
+      project.sprints.push(sprint);
+    }
+    await setCrmData(crmData);
+    res.json({ ok: true, sprint });
+  } catch (e) {
+    console.error('Create sprint error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/projects/:pid/sprints/:sid (Update Sprint)
+app.put('/api/projects/:pid/sprints/:sid', validateSession, async (req, res) => {
+  try {
+    const { pid, sid } = req.params;
+    const updates = req.body || {};
+    const crmData = await getCrmData();
+    const project = (crmData.projects || []).find(p => p && p.id === pid);
+    if (!project) return res.status(404).json({ error: 'Project not found.' });
+    const sprint = (project.sprints || []).find(s => s && s.id === sid);
+    if (!sprint) return res.status(404).json({ error: 'Sprint not found.' });
+    Object.assign(sprint, updates.sprint || updates);
+    await setCrmData(crmData);
+    res.json({ ok: true, sprint });
+  } catch (e) {
+    console.error('Update sprint error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── PROJECTS ──
+// POST /api/projects (Create Project)
+app.post('/api/projects', validateSession, async (req, res) => {
+  try {
+    const { project } = req.body || {};
+    if (!project || !project.id || !project.name) return res.status(400).json({ error: 'Invalid project payload.' });
+    const crmData = await getCrmData();
+    crmData.projects = crmData.projects || [];
+    const idx = crmData.projects.findIndex(p => p.id === project.id);
+    if (idx !== -1) {
+      crmData.projects[idx] = { ...crmData.projects[idx], ...project };
+    } else {
+      crmData.projects.push(project);
+    }
+    await setCrmData(crmData);
+    res.json({ ok: true, project });
+  } catch (e) {
+    console.error('Create project error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/projects/:pid (Update Project)
+app.put('/api/projects/:pid', validateSession, async (req, res) => {
+  try {
+    const { pid } = req.params;
+    const updates = req.body || {};
+    const crmData = await getCrmData();
+    const project = (crmData.projects || []).find(p => p && p.id === pid);
+    if (!project) return res.status(404).json({ error: 'Project not found.' });
+    Object.assign(project, updates.project || updates);
+    await setCrmData(crmData);
+    res.json({ ok: true, project });
+  } catch (e) {
+    console.error('Update project error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── CLIENTS ──
+// POST /api/clients (Create Client)
+app.post('/api/clients', validateSession, async (req, res) => {
+  try {
+    const { client } = req.body || {};
+    if (!client || !client.id || !client.name) return res.status(400).json({ error: 'Invalid client payload.' });
+    const crmData = await getCrmData();
+    crmData.clients = crmData.clients || [];
+    const idx = crmData.clients.findIndex(c => c.id === client.id);
+    if (idx !== -1) {
+      crmData.clients[idx] = { ...crmData.clients[idx], ...client };
+    } else {
+      crmData.clients.push(client);
+    }
+    await setCrmData(crmData);
+    res.json({ ok: true, client });
+  } catch (e) {
+    console.error('Create client error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/clients/:id (Update Client)
+app.put('/api/clients/:id', validateSession, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body || {};
+    const crmData = await getCrmData();
+    const client = (crmData.clients || []).find(c => c && c.id === id);
+    if (!client) return res.status(404).json({ error: 'Client not found.' });
+    Object.assign(client, updates.client || updates);
+    await setCrmData(crmData);
+    res.json({ ok: true, client });
+  } catch (e) {
+    console.error('Update client error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── MEETINGS ──
+// POST /api/meetings (Create Meeting)
+app.post('/api/meetings', validateSession, async (req, res) => {
+  try {
+    const { meeting } = req.body || {};
+    if (!meeting || !meeting.id || !meeting.title) return res.status(400).json({ error: 'Invalid meeting payload.' });
+    const crmData = await getCrmData();
+    crmData.meetings = crmData.meetings || [];
+    const idx = crmData.meetings.findIndex(m => m.id === meeting.id);
+    if (idx !== -1) {
+      crmData.meetings[idx] = { ...crmData.meetings[idx], ...meeting };
+    } else {
+      crmData.meetings.push(meeting);
+    }
+    await setCrmData(crmData);
+    res.json({ ok: true, meeting });
+  } catch (e) {
+    console.error('Create meeting error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/meetings/:id (Update Meeting)
+app.put('/api/meetings/:id', validateSession, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body || {};
+    const crmData = await getCrmData();
+    const meeting = (crmData.meetings || []).find(m => m && m.id === id);
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found.' });
+    Object.assign(meeting, updates.meeting || updates);
+    await setCrmData(crmData);
+    res.json({ ok: true, meeting });
+  } catch (e) {
+    console.error('Update meeting error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── NOTES ──
+// POST /api/notes (Create Note)
+app.post('/api/notes', validateSession, async (req, res) => {
+  try {
+    const { note } = req.body || {};
+    if (!note || !note.id) return res.status(400).json({ error: 'Invalid note payload.' });
+    note.ownerId = req.userId;
+    const crmData = await getCrmData();
+    crmData.notes = crmData.notes || [];
+    const idx = crmData.notes.findIndex(n => n.id === note.id);
+    if (idx !== -1) {
+      crmData.notes[idx] = { ...crmData.notes[idx], ...note };
+    } else {
+      crmData.notes.push(note);
+    }
+    await setCrmData(crmData);
+    res.json({ ok: true, note });
+  } catch (e) {
+    console.error('Create note error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/notes/:id (Update Note)
+app.put('/api/notes/:id', validateSession, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body || {};
+    const crmData = await getCrmData();
+    const note = (crmData.notes || []).find(n => n && n.id === id && n.ownerId === req.userId);
+    if (!note) return res.status(404).json({ error: 'Note not found.' });
+    Object.assign(note, updates.note || updates);
+    await setCrmData(crmData);
+    res.json({ ok: true, note });
+  } catch (e) {
+    console.error('Update note error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── SPREADSHEETS ──
+// POST /api/spreadsheets (Create Spreadsheet)
+app.post('/api/spreadsheets', validateSession, async (req, res) => {
+  try {
+    const { spreadsheet } = req.body || {};
+    if (!spreadsheet || !spreadsheet.id) return res.status(400).json({ error: 'Invalid spreadsheet payload.' });
+    spreadsheet.ownerId = req.userId;
+    const crmData = await getCrmData();
+    crmData.spreadsheets = crmData.spreadsheets || [];
+    const idx = crmData.spreadsheets.findIndex(s => s.id === spreadsheet.id);
+    if (idx !== -1) {
+      crmData.spreadsheets[idx] = { ...crmData.spreadsheets[idx], ...spreadsheet };
+    } else {
+      crmData.spreadsheets.push(spreadsheet);
+    }
+    await setCrmData(crmData);
+    res.json({ ok: true, spreadsheet });
+  } catch (e) {
+    console.error('Create spreadsheet error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/spreadsheets/:id (Update Spreadsheet)
+app.put('/api/spreadsheets/:id', validateSession, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body || {};
+    const crmData = await getCrmData();
+    const sheet = (crmData.spreadsheets || []).find(s => s && s.id === id);
+    if (!sheet) return res.status(404).json({ error: 'Spreadsheet not found.' });
+    Object.assign(sheet, updates.spreadsheet || updates);
+    await setCrmData(crmData);
+    res.json({ ok: true, spreadsheet: sheet });
+  } catch (e) {
+    console.error('Update spreadsheet error:', e);
     res.status(500).json({ error: e.message });
   }
 });
