@@ -1956,6 +1956,13 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+let _crmWriteLock = Promise.resolve();
+function withCrmWriteLock(fn) {
+  const next = _crmWriteLock.then(fn, fn);
+  _crmWriteLock = next;
+  return next;
+}
+
 // POST /api/chat/send — dedicated chat message send endpoint to avoid overwrites
 app.post('/api/chat/send', validateSession, async (req, res) => {
   try {
@@ -1968,56 +1975,60 @@ app.post('/api/chat/send', validateSession, async (req, res) => {
       return res.status(403).json({ error: 'Sender ID does not match current session user.' });
     }
 
-    const current = await getCrmData();
-    current.messages = current.messages || [];
+    let dbMessage;
+    await withCrmWriteLock(async () => {
+      const current = await getCrmData();
+      current.messages = current.messages || [];
 
-    const dbMessage = {
-      ...message,
-      deliveryStatus: 'delivered'
-    };
+      dbMessage = {
+        ...message,
+        deliveryStatus: 'delivered'
+      };
 
-    const exists = current.messages.some(m => m.id === message.id);
-    if (!exists) {
-      current.messages.push(dbMessage);
+      const exists = current.messages.some(m => m.id === message.id);
+      if (!exists) {
+        current.messages.push(dbMessage);
 
-      // Generate recipient notifications on the server
-      const sender = (current.team || []).find(m => m.id === message.fromId);
-      const senderName = sender ? sender.name : 'Someone';
-      const textPreview = message.text || (message.attachments && message.attachments.length ? 'Attachment' : '');
+        // Generate recipient notifications on the server
+        const sender = (current.team || []).find(m => m.id === message.fromId);
+        const senderName = sender ? sender.name : 'Someone';
+        const textPreview = message.text || (message.attachments && message.attachments.length ? 'Attachment' : '');
 
-      if (message.groupId) {
-        const group = (current.chatGroups || []).find(g => g.id === message.groupId);
-        if (group && (group.memberIds || []).includes(req.userId)) {
+        if (message.groupId) {
+          const group = (current.chatGroups || []).find(g => g.id === message.groupId);
+          if (group && (group.memberIds || []).includes(req.userId)) {
+            current.notifications = current.notifications || [];
+            (group.memberIds || []).forEach(mId => {
+              if (mId !== req.userId) {
+                current.notifications.push({
+                  id: 'notif_' + Math.random().toString(36).substr(2, 9),
+                  userId: mId,
+                  text: `<b>${escapeHtml(senderName)}</b> sent a message in <b>${escapeHtml(group.name)}</b>: "${escapeHtml(textPreview)}"`,
+                  projectId: null,
+                  time: new Date().toISOString(),
+                  read: false,
+                  meta: { type: 'chat-group', chatId: `group-${message.groupId}`, actorId: req.userId }
+                });
+              }
+            });
+          }
+        } else if (message.toId) {
           current.notifications = current.notifications || [];
-          (group.memberIds || []).forEach(mId => {
-            if (mId !== req.userId) {
-              current.notifications.push({
-                id: 'notif_' + Math.random().toString(36).substr(2, 9),
-                userId: mId,
-                text: `<b>${escapeHtml(senderName)}</b> sent a message in <b>${escapeHtml(group.name)}</b>: "${escapeHtml(textPreview)}"`,
-                projectId: null,
-                time: new Date().toISOString(),
-                read: false,
-                meta: { type: 'chat-group', chatId: `group-${message.groupId}`, actorId: req.userId }
-              });
-            }
+          current.notifications.push({
+            id: 'notif_' + Math.random().toString(36).substr(2, 9),
+            userId: message.toId,
+            text: `<b>${escapeHtml(senderName)}</b> sent you a message: "${escapeHtml(textPreview)}"`,
+            projectId: null,
+            time: new Date().toISOString(),
+            read: false,
+            meta: { type: 'chat-group', chatId: req.userId, actorId: req.userId }
           });
         }
-      } else if (message.toId) {
-        current.notifications = current.notifications || [];
-        current.notifications.push({
-          id: 'notif_' + Math.random().toString(36).substr(2, 9),
-          userId: message.toId,
-          text: `<b>${escapeHtml(senderName)}</b> sent you a message: "${escapeHtml(textPreview)}"`,
-          projectId: null,
-          time: new Date().toISOString(),
-          read: false,
-          meta: { type: 'chat-group', chatId: req.userId, actorId: req.userId }
-        });
       }
-    }
 
-    await setCrmData(current);
+      await setCrmData(current);
+    });
+
     io.emit('db_changed', { type: 'chat' });
     res.json({ ok: true, message: dbMessage });
   } catch (e) {
@@ -2034,34 +2045,39 @@ app.post('/api/chat/mark-read', validateSession, async (req, res) => {
       return res.status(400).json({ error: 'chatId is required.' });
     }
 
-    const current = await getCrmData();
-    current.messages = current.messages || [];
     let changed = false;
+    await withCrmWriteLock(async () => {
+      const current = await getCrmData();
+      current.messages = current.messages || [];
 
-    const isGroup = String(chatId).startsWith('group:');
-    if (isGroup) {
-      const groupId = String(chatId).slice(6);
-      current.messages.forEach(m => {
-        if (m && m.groupId === groupId && m.fromId !== req.userId) {
-          m.readBy = Array.isArray(m.readBy) ? m.readBy : [];
-          if (!m.readBy.includes(req.userId)) {
-            m.readBy.push(req.userId);
+      const isGroup = String(chatId).startsWith('group:');
+      if (isGroup) {
+        const groupId = String(chatId).slice(6);
+        current.messages.forEach(m => {
+          if (m && m.groupId === groupId && m.fromId !== req.userId) {
+            m.readBy = Array.isArray(m.readBy) ? m.readBy : [];
+            if (!m.readBy.includes(req.userId)) {
+              m.readBy.push(req.userId);
+              changed = true;
+            }
+          }
+        });
+      } else {
+        // Direct message from partner (chatId) to current user (req.userId)
+        current.messages.forEach(m => {
+          if (m && m.fromId === chatId && m.toId === req.userId && !m.read) {
+            m.read = true;
             changed = true;
           }
-        }
-      });
-    } else {
-      // Direct message from partner (chatId) to current user (req.userId)
-      current.messages.forEach(m => {
-        if (m && m.fromId === chatId && m.toId === req.userId && !m.read) {
-          m.read = true;
-          changed = true;
-        }
-      });
-    }
+        });
+      }
+
+      if (changed) {
+        await setCrmData(current);
+      }
+    });
 
     if (changed) {
-      await setCrmData(current);
       io.emit('db_changed', { type: 'chat-read', userId: req.userId });
     }
     res.json({ ok: true });

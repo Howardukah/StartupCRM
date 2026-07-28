@@ -12011,9 +12011,7 @@
       (localMessages || []).forEach(localMsg => {
         if (!localMsg || !localMsg.id) return;
         if (!serverMsgMap.has(localMsg.id)) {
-          if (localMsg.deliveryStatus === 'pending' || localMsg.deliveryStatus === 'queued') {
-            merged.push(localMsg);
-          }
+          merged.push(localMsg);
         } else {
           const serverMsg = serverMsgMap.get(localMsg.id);
           if (localMsg.deliveryStatus === 'pending' || localMsg.deliveryStatus === 'queued') {
@@ -15798,6 +15796,7 @@
       if (_activeMailView === 'chat' && chatWindows.length > maxOpenChatWindows()) renderChat();
     });
     async function sendChatMessage(chatId) {
+      _localMutationUntil = Date.now() + 3000;
       const safeId = chatId.replace(/:/g, '-');
       const input = document.getElementById('chat-input-' + safeId);
       if (!input || !chatId) return;
