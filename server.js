@@ -1513,8 +1513,11 @@ app.delete('/api/projects/:pid/sprints/:sid/tasks/:tid', validateSession, async 
     const initialLen = (sprint.tasks || []).length;
     sprint.tasks = (sprint.tasks || []).filter(t => t && t.id !== tid);
     if (sprint.tasks.length === initialLen) return res.status(404).json({ error: 'Task not found.' });
+    if (sprint.tasks.length === 0) {
+      project.sprints = (project.sprints || []).filter(s => s && s.id !== sid);
+    }
     await setCrmData(crmData);
-    res.json({ ok: true });
+    res.json({ ok: true, sprintDeleted: sprint.tasks.length === 0 });
   } catch (e) {
     console.error('Delete task error:', e);
     res.status(500).json({ error: e.message });

@@ -22062,7 +22062,7 @@
       }
     }
 
-    async function deleteTask(pid, sid, tid) {
+    function deleteTask(pid, sid, tid) {
       if (_deletingIds.has('task:' + tid)) return;
       const p = getProject(pid); if (!p) return;
       const s = p.sprints.find(x => x.id === sid); if (!s) return;
@@ -22071,21 +22071,25 @@
       _deletingIds.add('task:' + tid);
       try {
         if (!s.tasks.find(x => x.id === tid)) return; // already gone
-        await apiFetch('/api/projects/' + pid + '/sprints/' + sid + '/tasks/' + tid, { method: 'DELETE' });
         s.tasks = s.tasks.filter(x => x.id !== tid);
-        if (cleanupEmptySprints(p)) {
-          logActivity('removed empty sprint from <b>' + p.name + '</b> after deleting its last task');
+        const sprintRemoved = cleanupEmptySprints(p);
+        if (sprintRemoved) {
+          logActivity('removed empty sprint from <b>' + escapeHTML(p.name) + '</b> after deleting its last task');
         }
         if (p.sprints.length === 0) {
-          logActivity('removed all empty sprints from <b>' + p.name + '</b>');
+          logActivity('removed all empty sprints from <b>' + escapeHTML(p.name) + '</b>');
         }
         handleSprintTaskCompletion(p, s);
         syncProjectLifecycleWithTasks(p);
+        // Instant 0ms optimistic UI re-render
         persistAndRender([() => renderProjectDetail(pid), renderProjects, renderOverview, renderNotifications], { save: false });
-      } catch (err) {
-        showToast('Could not delete task: ' + err.message, 'error');
+
+        // Non-blocking background API deletion
+        apiFetch('/api/projects/' + pid + '/sprints/' + sid + '/tasks/' + tid, { method: 'DELETE' }).catch(err => {
+          showToast('Could not sync deleted task: ' + (err.message || 'Error'), 'error');
+        });
       } finally {
-        _deletingIds.delete('task:' + tid);
+        setTimeout(() => _deletingIds.delete('task:' + tid), 500);
       }
     }
 
