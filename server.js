@@ -2284,6 +2284,8 @@ app.post('/api/team/add', validateSession, async (req, res) => {
 
     const inviteKey = process.env.RESEND_NOREPLY_KEY || process.env.RESEND_API_KEY;
     if (inviteKey) {
+      // Send to personal email if provided, otherwise fall back to login email
+      const deliveryEmail = (newMember.personalEmail && newMember.personalEmail.trim()) ? newMember.personalEmail.trim() : newMember.email;
       fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
@@ -2292,12 +2294,12 @@ app.post('/api/team/add', validateSession, async (req, res) => {
         },
         body: JSON.stringify({
           from: `${fromName} <${fromAddr}>`,
-          to: [newMember.email],
+          to: [deliveryEmail],
           subject: 'Welcome to Startup. - Your Account Login Details',
           html
         })
       }).then(r => r.json().then(data => {
-        if (r.ok) console.log(`📧 Welcome email sent via Resend API to ${newMember.email}`);
+        if (r.ok) console.log(`📧 Welcome email sent via Resend API to ${deliveryEmail} (personal)`);
         else console.warn(`⚠️ Resend API returned error when sending invite:`, data);
       })).catch(e => {
         console.warn(`⚠️ Resend API fetch failed when sending invite:`, e.message);
@@ -2843,8 +2845,11 @@ setTimeout(checkBirthdayAutoMails, 10000);
 
 app.post('/api/send-invite-email', validateSession, async (req, res) => {
   try {
-    const { toName, toEmail, password } = req.body || {};
+    const { toName, toEmail, personalEmail, password } = req.body || {};
     if (!toName || !toEmail) return res.status(400).json({ error: 'toName and toEmail are required.' });
+
+    // Deliver to personal email if available, otherwise fall back to login email
+    const deliveryEmail = (personalEmail && personalEmail.trim()) ? personalEmail.trim() : toEmail;
 
     const mailer = getMailer();
     if (!mailer) {
@@ -2921,12 +2926,12 @@ app.post('/api/send-invite-email', validateSession, async (req, res) => {
 
     await sendMailWithFallback({
       from: `"${fromName}" <${fromAddr}>`,
-      to: `"${toName}" <${toEmail}>`,
+      to: `"${toName}" <${deliveryEmail}>`,
       subject: sendSubject,
       html: sendHtml,
     });
 
-    console.log(`📧 Invite email sent to ${toEmail}`);
+    console.log(`📧 Invite email sent to ${deliveryEmail}${deliveryEmail !== toEmail ? ' (personal mail; login: ' + toEmail + ')' : ''}`);
     res.json({ ok: true });
   } catch (err) {
     console.error('Email send error:', err);
