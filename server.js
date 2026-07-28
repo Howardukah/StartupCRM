@@ -4475,11 +4475,8 @@ app.post('/api/projects/:projectId/asset-buckets/:bucketId/send-invite', validat
     const toEmail = String(project.contactEmail || client?.email || '').trim();
     if (!/^\S+@\S+\.\S+$/.test(toEmail)) return res.status(400).json({ error: 'A valid client email is required.' });
 
-    const mailer = getMailer();
-    if (!mailer) return res.json({ ok: true, skipped: true });
-
     const fromName = process.env.SMTP_FROM_NAME || 'Startup Build';
-    const fromAddr = process.env.SMTP_USER;
+    const fromAddr = 'noreply@startupbuild.tech';
     const supportEmail = process.env.SUPPORT_EMAIL || 'support@startupbuild.tech';
     const toName = client?.name || '';
     const projectDisplayName = project.name || project.title || 'your project';
@@ -4498,12 +4495,38 @@ app.post('/api/projects/:projectId/asset-buckets/:bucketId/send-invite', validat
       toName: toName || toEmail, toEmail, projectDisplayName, secretKey: invite.secretKey,
       bucketUrl: invite.bucketUrl, fromName, fromAddr, supportEmail,
     });
-    await mailer.sendMail({
-      from: `"${fromName}" <${fromAddr}>`,
-      to: toName ? `"${toName}" <${toEmail}>` : toEmail,
-      subject: rendered ? rendered.subject : emailSubject,
-      html: rendered ? rendered.html : emailHtml,
+
+    const finalSubject = rendered ? rendered.subject : emailSubject;
+    const finalHtml = rendered ? rendered.html : emailHtml;
+
+    // Use Resend API (same as team invite emails) — avoids SMTP connection issues
+    const inviteKey = process.env.RESEND_NOREPLY_KEY || process.env.RESEND_API_KEY;
+    if (!inviteKey) {
+      console.warn('⚠️ Resend API key not configured — skipping asset bucket invite email.');
+      pendingAssetBucketInvites.delete(bucket.id);
+      return res.json({ ok: true, skipped: true, reason: 'Resend API key not configured.' });
+    }
+
+    const resendRes = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${inviteKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: `${fromName} <${fromAddr}>`,
+        to: toName ? [`${toName} <${toEmail}>`] : [toEmail],
+        subject: finalSubject,
+        html: finalHtml,
+      })
     });
+    const resendData = await resendRes.json();
+    if (!resendRes.ok) {
+      console.error('⚠️ Resend API error sending asset bucket invite:', resendData);
+      return res.status(500).json({ error: resendData.message || 'Failed to send asset bucket invite email.' });
+    }
+
+    console.log(`📧 Asset bucket invite sent via Resend to ${toEmail}`);
     pendingAssetBucketInvites.delete(bucket.id);
     res.json({ ok: true, emailSent: true, emailTo: toEmail });
   } catch (error) {
