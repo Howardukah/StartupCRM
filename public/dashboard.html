@@ -12034,6 +12034,7 @@
     }
 
     async function reloadDBFromDisk() {
+      if (_saveInFlight || _savePending || (_deletingIds && _deletingIds.size > 0) || Date.now() < _localMutationUntil) return;
       try {
         const token = sessionStorage.getItem('crm-session-token');
         const res = await fetch(API_BASE + '/api/db', {
@@ -18178,7 +18179,7 @@
     })();
 
     async function _autoPoll() {
-      if (_saveInFlight || _savePending || Date.now() < _localMutationUntil) return;
+      if (_saveInFlight || _savePending || (_deletingIds && _deletingIds.size > 0) || Date.now() < _localMutationUntil) return;
       try {
         const token = sessionStorage.getItem('crm-session-token');
         if (!token) return;
