@@ -1387,112 +1387,112 @@ app.get('/api/db', validateSession, async (req, res) => {
 // slice of those two collections (see GET /api/db above).
 app.post('/api/db', validateSession, async (req, res) => {
   try {
-    const current = await getCrmData();
-    const me = (current.team || []).find(m => m.id === req.userId);
-    const userIsAdmin = !!me && hasPermission(me.role, 'canViewAllContent');
-    const incoming = req.body || {};
+    await withCrmWriteLock(async () => {
+      const current = await getCrmData();
+      const me = (current.team || []).find(m => m.id === req.userId);
+      const userIsAdmin = !!me && hasPermission(me.role, 'canViewAllContent');
+      const incoming = req.body || {};
 
-    const merged = { ...current };
+      const merged = { ...current };
 
-    const SHARED_KEYS = ['clients', 'projects', 'chatGroups', 'notifications'];
+      const SHARED_KEYS = ['clients', 'projects', 'chatGroups', 'notifications'];
 
-    for (const key of SHARED_KEYS) {
-      if (incoming[key] !== undefined) {
-        merged[key] = Array.isArray(incoming[key]) ? incoming[key].filter(Boolean) : incoming[key];
-      }
-    }
-    const deletedMeetingIds = Array.from(new Set([
-      ...(current.deletedMeetingIds || []),
-      ...(incoming.deletedMeetingIds || [])
-    ].filter(Boolean)));
-    if (incoming.meetings !== undefined) {
-      const deleted = new Set(deletedMeetingIds);
-      merged.meetings = (incoming.meetings || []).filter(m => m && m.id && !deleted.has(m.id));
-    }
-    merged.deletedMeetingIds = deletedMeetingIds;
-
-    // — Team change detection (admin/HR) ——————————————————————————
-    if (incoming.team !== undefined && Array.isArray(incoming.team)) {
-      const role = me ? me.role : null;
-      const canManageTeam = hasPermission(role, 'canManageTeam');
-      const canAssignAdmins = hasPermission(role, 'canAssignAdmins');
-      const teamList = incoming.team.filter(Boolean);
-
-      if (!canManageTeam) {
-        console.warn(`[security] Non-authorized user ${req.userId} tried to write 'team' — ignored.`);
-      } else {
-        if (!canAssignAdmins) {
-          const currentAdmins = (current.team || []).filter(m => m && m.role === 'Admin');
-          const adminIds = new Set(currentAdmins.map(m => m.id));
-          const safeTeam = [];
-          for (const m of teamList) {
-            if (m && m.id && adminIds.has(m.id)) {
-              const foundAdmin = currentAdmins.find(admin => admin && admin.id === m.id);
-              if (foundAdmin) safeTeam.push(foundAdmin);
-            } else if (m) {
-              if (m.role === 'Admin') m.role = 'Engineer';
-              safeTeam.push(m);
-            }
-          }
-          for (const admin of currentAdmins) {
-            if (admin && admin.id && !safeTeam.find(m => m && m.id === admin.id)) safeTeam.push(admin);
-          }
-          incoming.team = safeTeam.filter(Boolean);
-        } else {
-          incoming.team = teamList;
+      for (const key of SHARED_KEYS) {
+        if (incoming[key] !== undefined) {
+          merged[key] = Array.isArray(incoming[key]) ? incoming[key].filter(Boolean) : incoming[key];
         }
-
-        // Ensure mailboxAddress is kept in sync with companyMail || email
-        incoming.team.forEach(m => {
-          if (m) {
-            m.mailboxAddress = (m.companyMail || m.email || '').trim().toLowerCase();
-          }
-        });
-
-        revokeSessionsForUsers(sessionUserIdsToRevokeAfterTeamChange(current.team, incoming.team));
-        merged.team = incoming.team;
       }
-    }
+      const deletedMeetingIds = Array.from(new Set([
+        ...(current.deletedMeetingIds || []),
+        ...(incoming.deletedMeetingIds || [])
+      ].filter(Boolean)));
+      if (incoming.meetings !== undefined) {
+        const deleted = new Set(deletedMeetingIds);
+        merged.meetings = (incoming.meetings || []).filter(m => m && m.id && !deleted.has(m.id));
+      }
+      merged.deletedMeetingIds = deletedMeetingIds;
 
-    // Per-user data: reconcile instead of overwrite, so this user's request
-    // can't affect data belonging to other users that they never received.
-    merged.spreadsheets = reconcileOwnedCollection(
-      current.spreadsheets, incoming.spreadsheets, req.userId,
-      s => isSpreadsheetVisible(s, req.userId, userIsAdmin),
-      s => s.ownerId === req.userId && !s.isDefault,
-      ['ownerId', 'isDefault', 'sharedWith']
-    );
-    merged.notes = reconcileOwnedCollection(
-      current.notes, incoming.notes, req.userId,
-      n => isNoteVisible(n, req.userId),
-      n => n.ownerId === req.userId,
-      ['ownerId']
-    );
-    merged.attendance = reconcileUserCollection(
-      current.attendance, incoming.attendance, req.userId,
-      a => isAttendanceVisible(a, req.userId, hasPermission(me ? me.role : null, 'canManagePayroll'))
-    );
-    if (hasPermission(me ? me.role : null, 'canManageLeads') || userIsAdmin) {
-      merged.leads = incoming.leads || [];
-    } else { merged.leads = current.leads || []; }
-    if (hasPermission(me ? me.role : null, 'canSendProposals') || userIsAdmin) {
-      merged.proposals = incoming.proposals || [];
-      merged.mailTemplates = incoming.mailTemplates || [];
-    } else {
-      merged.proposals = current.proposals || [];
-      merged.mailTemplates = current.mailTemplates || [];
-    }
-    if (userIsAdmin || (me && me.role === 'Admin')) {
-      if (incoming.autoMails !== undefined) merged.autoMails = incoming.autoMails;
-    }
-    if (hasPermission(me ? me.role : null, 'canEditPricing') || userIsAdmin) {
-      merged.pricingCatalog = incoming.pricingCatalog || current.pricingCatalog || [];
-    } else {
-      merged.pricingCatalog = current.pricingCatalog || [];
-    }
-    // Activity is NEVER written by the client via save-db. It's written explicitly via logActivity.
+      // — Team change detection (admin/HR) ——————————————————————————
+      if (incoming.team !== undefined && Array.isArray(incoming.team)) {
+        const role = me ? me.role : null;
+        const canManageTeam = hasPermission(role, 'canManageTeam');
+        const canAssignAdmins = hasPermission(role, 'canAssignAdmins');
+        const teamList = incoming.team.filter(Boolean);
 
-    await setCrmData(merged);
+        if (!canManageTeam) {
+          console.warn(`[security] Non-authorized user ${req.userId} tried to write 'team' — ignored.`);
+        } else {
+          if (!canAssignAdmins) {
+            const currentAdmins = (current.team || []).filter(m => m && m.role === 'Admin');
+            const adminIds = new Set(currentAdmins.map(m => m.id));
+            const safeTeam = [];
+            for (const m of teamList) {
+              if (m && m.id && adminIds.has(m.id)) {
+                const foundAdmin = currentAdmins.find(admin => admin && admin.id === m.id);
+                if (foundAdmin) safeTeam.push(foundAdmin);
+              } else if (m) {
+                if (m.role === 'Admin') m.role = 'Engineer';
+                safeTeam.push(m);
+              }
+            }
+            for (const admin of currentAdmins) {
+              if (admin && admin.id && !safeTeam.find(m => m && m.id === admin.id)) safeTeam.push(admin);
+            }
+            incoming.team = safeTeam.filter(Boolean);
+          } else {
+            incoming.team = teamList;
+          }
+
+          // Ensure mailboxAddress is kept in sync with companyMail || email
+          incoming.team.forEach(m => {
+            if (m) {
+              m.mailboxAddress = (m.companyMail || m.email || '').trim().toLowerCase();
+            }
+          });
+
+          revokeSessionsForUsers(sessionUserIdsToRevokeAfterTeamChange(current.team, incoming.team));
+          merged.team = incoming.team;
+        }
+      }
+
+      // Per-user data: reconcile instead of overwrite
+      merged.spreadsheets = reconcileOwnedCollection(
+        current.spreadsheets, incoming.spreadsheets, req.userId,
+        s => isSpreadsheetVisible(s, req.userId, userIsAdmin),
+        s => s.ownerId === req.userId && !s.isDefault,
+        ['ownerId', 'isDefault', 'sharedWith']
+      );
+      merged.notes = reconcileOwnedCollection(
+        current.notes, incoming.notes, req.userId,
+        n => isNoteVisible(n, req.userId),
+        n => n.ownerId === req.userId,
+        ['ownerId']
+      );
+      merged.attendance = reconcileUserCollection(
+        current.attendance, incoming.attendance, req.userId,
+        a => isAttendanceVisible(a, req.userId, hasPermission(me ? me.role : null, 'canManagePayroll'))
+      );
+      if (hasPermission(me ? me.role : null, 'canManageLeads') || userIsAdmin) {
+        merged.leads = incoming.leads || [];
+      } else { merged.leads = current.leads || []; }
+      if (hasPermission(me ? me.role : null, 'canSendProposals') || userIsAdmin) {
+        merged.proposals = incoming.proposals || [];
+        merged.mailTemplates = incoming.mailTemplates || [];
+      } else {
+        merged.proposals = current.proposals || [];
+        merged.mailTemplates = current.mailTemplates || [];
+      }
+      if (userIsAdmin || (me && me.role === 'Admin')) {
+        if (incoming.autoMails !== undefined) merged.autoMails = incoming.autoMails;
+      }
+      if (hasPermission(me ? me.role : null, 'canEditPricing') || userIsAdmin) {
+        merged.pricingCatalog = incoming.pricingCatalog || current.pricingCatalog || [];
+      } else {
+        merged.pricingCatalog = current.pricingCatalog || [];
+      }
+
+      await setCrmData(merged);
+    });
     res.json({ ok: true });
   } catch (e) {
     console.error(e);
@@ -1755,15 +1755,17 @@ app.post('/api/projects', validateSession, async (req, res) => {
   try {
     const { project } = req.body || {};
     if (!project || !project.id || !project.name) return res.status(400).json({ error: 'Invalid project payload.' });
-    const crmData = await getCrmData();
-    crmData.projects = crmData.projects || [];
-    const idx = crmData.projects.findIndex(p => p.id === project.id);
-    if (idx !== -1) {
-      crmData.projects[idx] = { ...crmData.projects[idx], ...project };
-    } else {
-      crmData.projects.push(project);
-    }
-    await setCrmData(crmData);
+    await withCrmWriteLock(async () => {
+      const crmData = await getCrmData();
+      crmData.projects = crmData.projects || [];
+      const idx = crmData.projects.findIndex(p => p.id === project.id);
+      if (idx !== -1) {
+        crmData.projects[idx] = { ...crmData.projects[idx], ...project };
+      } else {
+        crmData.projects.push(project);
+      }
+      await setCrmData(crmData);
+    });
     res.json({ ok: true, project });
   } catch (e) {
     console.error('Create project error:', e);
@@ -1776,13 +1778,17 @@ app.put('/api/projects/:pid', validateSession, async (req, res) => {
   try {
     const { pid } = req.params;
     const updates = req.body || {};
-    const crmData = await getCrmData();
-    const project = (crmData.projects || []).find(p => p && p.id === pid);
-    if (!project) return res.status(404).json({ error: 'Project not found.' });
-    Object.assign(project, updates.project || updates);
-    await setCrmData(crmData);
+    let project;
+    await withCrmWriteLock(async () => {
+      const crmData = await getCrmData();
+      project = (crmData.projects || []).find(p => p && p.id === pid);
+      if (!project) throw new Error('NOT_FOUND');
+      Object.assign(project, updates.project || updates);
+      await setCrmData(crmData);
+    });
     res.json({ ok: true, project });
   } catch (e) {
+    if (e.message === 'NOT_FOUND') return res.status(404).json({ error: 'Project not found.' });
     console.error('Update project error:', e);
     res.status(500).json({ error: e.message });
   }
