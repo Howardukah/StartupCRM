@@ -1097,17 +1097,19 @@ input[type=file]{display:none}
     }, 400);
   }, 8000);
 
-  async function validateToken() {
+  async function validateToken(skipToUpload = false) {
     if (window.Notification && Notification.permission !== "granted" && Notification.permission !== "denied") {
       Notification.requestPermission();
     }
     try {
       const res = await fetch(SERVER + '/api/asset-bucket/validate/' + bucketToken);
       if (res.status === 403) { 
+        try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}
         showInvalid('This upload link has been restricted. Please contact your project manager.'); 
         return; 
       }
       if (res.status === 404) {
+        try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}
         showInvalid('Link not found. Please contact the admin.');
         return;
       }
@@ -1119,14 +1121,22 @@ input[type=file]{display:none}
       }
       projectInfo = await res.json();
       if (!projectInfo.valid) { 
+        try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}
         showInvalid(projectInfo.reason); 
         return; 
       }
-      
+
       function escapeHtml(s) {
         return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
       }
-      
+
+      // If session already authenticated, skip key screen entirely
+      if (skipToUpload) {
+        document.getElementById('loading-screen').style.display = 'none';
+        showUploadScreen(projectInfo.projectName || 'Your Project');
+        return;
+      }
+
       // Token is valid — keep auth screen visible and prepare text
       document.getElementById('loading-screen').style.display = 'none';
       document.getElementById('auth-screen').style.display = 'flex';
@@ -1183,6 +1193,8 @@ input[type=file]{display:none}
       }
 
       enteredKey = key;
+      // Persist auth so re-opening the link in this browser session skips the key screen
+      try { sessionStorage.setItem('bucket-authed-' + bucketToken, '1'); } catch(e) {}
       showUploadScreen(data.projectName || projectInfo?.projectName || 'Your Project');
     } catch (e) {
       errEl.textContent = 'Could not connect. Please try again.';
@@ -1196,7 +1208,14 @@ input[type=file]{display:none}
   if (!bucketToken || bucketToken === 'upload.html') {
     showInvalid('No upload link token found. Please use the full link from your email.');
   } else {
-    validateToken();
+    // Check if this session already authenticated for this bucket token
+    const alreadyAuthed = sessionStorage.getItem('bucket-authed-' + bucketToken) === '1';
+    if (alreadyAuthed) {
+      // Validate token is still active then skip key screen
+      validateToken(/* skipToUpload= */ true);
+    } else {
+      validateToken();
+    }
   }
 
   function showUploadScreen(projectName) {
@@ -1664,6 +1683,7 @@ input[type=file]{display:none}
     });
     socket.on('bucket_restricted', payload => {
       bucketSessionRestricted = true;
+      try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}
       showInvalid(payload?.message || 'This upload link has been restricted. Please contact your project manager.');
       socket.disconnect();
     });
