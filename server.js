@@ -1557,7 +1557,52 @@ app.delete('/api/projects/:pid', validateSession, async (req, res) => {
     if (projToDel && projToDel.status === 'paused') {
       return res.status(400).json({ error: 'This project is paused and cannot be deleted.' });
     }
+
+    // ── 1. Cascade-delete all Supabase asset buckets + their uploaded files ──
+    const { data: buckets } = await supabase
+      .from('asset_buckets')
+      .select('id')
+      .eq('project_id', pid);
+
+    if (buckets && buckets.length > 0) {
+      for (const bucket of buckets) {
+        // Fetch every asset file path stored under this bucket
+        const { data: assets } = await supabase
+          .from('assets')
+          .select('storage_path')
+          .eq('bucket_id', bucket.id);
+
+        // Delete files from B2 / object storage
+        if (assets && assets.length > 0) {
+          await Promise.all(assets.map(a => deleteFromB2(a.storage_path).catch(() => {})));
+        }
+
+        // Delete asset rows from Supabase
+        await supabase.from('assets').delete().eq('bucket_id', bucket.id);
+
+        // Delete the bucket row from Supabase
+        await supabase.from('asset_buckets').delete().eq('id', bucket.id);
+
+        // Clear any pending in-memory invite for this bucket
+        pendingAssetBucketInvites.delete(bucket.id);
+      }
+      console.log(`🗑️  Deleted ${buckets.length} asset bucket(s) and all assets for project ${pid}`);
+    }
+
+    // ── 2. Remove the project from CRM data ──
     crmData.projects = (crmData.projects || []).filter(x => x && x.id !== pid);
+
+    // ── 3. Clean up CRM-level data tied to this project ──
+    if (Array.isArray(crmData.meetings)) {
+      crmData.meetings = crmData.meetings.filter(m => m && m.projectId !== pid);
+    }
+    if (Array.isArray(crmData.notes)) {
+      crmData.notes = crmData.notes.filter(n => n && n.projectId !== pid);
+    }
+    if (Array.isArray(crmData.messages)) {
+      crmData.messages = crmData.messages.filter(m => m && m.projectId !== pid);
+    }
+
     await setCrmData(crmData);
     res.json({ ok: true });
   } catch (e) {
@@ -1565,6 +1610,7 @@ app.delete('/api/projects/:pid', validateSession, async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
 
 // DELETE /api/clients/:id
 app.delete('/api/clients/:id', validateSession, async (req, res) => {
