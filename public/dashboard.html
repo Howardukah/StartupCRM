@@ -20136,6 +20136,7 @@
     }
 
     const newProjectDraftTimers = {};
+    let newProjectDrafts = loadProjectDraftsFromStorage(); // Persist drafts across modal open/close
 
     function saveCurrentProjectDraft() {
       if (editingProjectId) return;
