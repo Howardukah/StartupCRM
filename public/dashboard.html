@@ -12339,7 +12339,7 @@
       currentSheetTabId = tabId;
       renderSpreadsheetsList();
       renderSpreadsheetEditor();
-      saveDB(true);
+      apiFetch('/api/spreadsheets', { method: 'POST', body: JSON.stringify({ spreadsheet: sheet }) }).catch(() => {});
     }
 
     function selectSpreadsheet(id) {
@@ -12435,7 +12435,7 @@
       sheet.name = value;
       sheet.updated = now();
       renderSpreadsheetsList();
-      debounceSave('ss', () => saveDB(true));
+      apiFetch('/api/spreadsheets/' + sheet.id, { method: 'PUT', body: JSON.stringify({ name: value, updated: sheet.updated }) }).catch(() => {});
     }
 
     async function deleteCurrentSS() {
@@ -12507,7 +12507,7 @@
       checkboxes.forEach(cb => { if (cb.checked) newSharedWith.push(cb.dataset.memberId); });
       sheet.sharedWith = newSharedWith;
       sheet.updated = now();
-      saveDB(true);
+      apiFetch('/api/spreadsheets/' + sheet.id, { method: 'PUT', body: JSON.stringify({ sharedWith: newSharedWith, updated: sheet.updated }) }).catch(() => {});
       closeShareModal();
       showToast('Sharing updated.');
     }
@@ -12520,7 +12520,7 @@
       if (checked) { if (!sheet.sharedWith.includes(memberId)) sheet.sharedWith.push(memberId); }
       else { sheet.sharedWith = sheet.sharedWith.filter(id => id !== memberId); }
       sheet.updated = now();
-      saveDB(true);
+      apiFetch('/api/spreadsheets/' + sheet.id, { method: 'PUT', body: JSON.stringify({ sharedWith: sheet.sharedWith, updated: sheet.updated }) }).catch(() => {});
     }
 
     /* ---- tabs ---- */
@@ -12551,7 +12551,7 @@
       sheet.updated = now();
       renderSheetTabs();
       renderSheetGrid();
-      saveDB(true);
+      apiFetch('/api/spreadsheets/' + sheet.id, { method: 'PUT', body: JSON.stringify({ tabs: sheet.tabs, updated: sheet.updated }) }).catch(() => {});
     }
 
     function createSpreadsheetTab(sheet, number) {
@@ -12579,7 +12579,7 @@
       tab.name = name.trim() || tab.name;
       sheet.updated = now();
       renderSheetTabs();
-      saveDB(true);
+      apiFetch('/api/spreadsheets/' + sheet.id, { method: 'PUT', body: JSON.stringify({ tabs: sheet.tabs, updated: sheet.updated }) }).catch(() => {});
     }
 
     async function deleteSheetTab(tabId) {
@@ -12592,7 +12592,7 @@
       sheet.updated = now();
       renderSheetTabs();
       renderSheetGrid();
-      saveDB(true);
+      apiFetch('/api/spreadsheets/' + sheet.id, { method: 'PUT', body: JSON.stringify({ tabs: sheet.tabs, updated: sheet.updated }) }).catch(() => {});
     }
 
     function currentSheetTab() {
@@ -12793,7 +12793,11 @@
       else tab.cells[key] = cell;
       sheet.updated = now();
       renderSpreadsheetsList();
-      debounceSave('ss-cell', () => saveDB(true));
+      const _ssId = sheet.id, _tabs = sheet.tabs;
+      clearTimeout(window._ssCellSaveTimer);
+      window._ssCellSaveTimer = setTimeout(() => {
+        apiFetch('/api/spreadsheets/' + _ssId, { method: 'PUT', body: JSON.stringify({ tabs: _tabs, updated: sheet.updated }) }).catch(() => {});
+      }, 700);
     }
 
     function setActiveCell(r, c) { activeCellR = r; activeCellC = c; }
@@ -12953,7 +12957,11 @@
       const r = activeCellR, c = activeCellC;
       renderSheetGrid();
       focusCell(r, c);
-      debounceSave('ss-fmt', () => saveDB(true));
+      const _ssIdBold = sheet.id, _tabsBold = sheet.tabs;
+      clearTimeout(window._ssFmtSaveTimer);
+      window._ssFmtSaveTimer = setTimeout(() => {
+        apiFetch('/api/spreadsheets/' + _ssIdBold, { method: 'PUT', body: JSON.stringify({ tabs: _tabsBold, updated: sheet.updated }) }).catch(() => {});
+      }, 700);
     }
 
     function applyCellColor(hex) {
@@ -12968,7 +12976,11 @@
       const r = activeCellR, c = activeCellC;
       renderSheetGrid();
       focusCell(r, c);
-      debounceSave('ss-fmt', () => saveDB(true));
+      const _ssId2 = sheet.id, _tabs2 = sheet.tabs;
+      clearTimeout(window._ssFmtSaveTimer);
+      window._ssFmtSaveTimer = setTimeout(() => {
+        apiFetch('/api/spreadsheets/' + _ssId2, { method: 'PUT', body: JSON.stringify({ tabs: _tabs2, updated: sheet.updated }) }).catch(() => {});
+      }, 700);
     }
 
     function sheetCellKeydown(e, r, c) {
@@ -13014,7 +13026,7 @@
         handle.classList.remove('is-dragging');
         _activeResizeCleanup = null;
         sheet.updated = now();
-        saveDB(true);
+        apiFetch('/api/spreadsheets/' + sheet.id, { method: 'PUT', body: JSON.stringify({ tabs: sheet.tabs, updated: sheet.updated }) }).catch(() => {});
       }
       _activeResizeCleanup = cleanup;
       document.addEventListener('mousemove', onMove);
@@ -13045,7 +13057,7 @@
         handle.classList.remove('is-dragging');
         _activeResizeCleanup = null;
         sheet.updated = now();
-        saveDB(true);
+        apiFetch('/api/spreadsheets/' + sheet.id, { method: 'PUT', body: JSON.stringify({ tabs: sheet.tabs, updated: sheet.updated }) }).catch(() => {});
       }
       _activeResizeCleanup = cleanup;
       document.addEventListener('mousemove', onMove);
@@ -13087,7 +13099,7 @@
       currentNoteId = note.id;
       renderNotesList();
       renderNoteEditor();
-      saveDB(true);
+      apiFetch('/api/notes', { method: 'POST', body: JSON.stringify({ note }) }).catch(() => {});
       const titleInput = document.getElementById('note-title-input');
       if (titleInput) setTimeout(() => titleInput.focus(), 0);
     }
@@ -13133,10 +13145,13 @@
       const status = document.getElementById('note-save-status');
       if (status) status.textContent = 'Saving...';
       renderNotesList();
-      debounceSave('note', () => {
-        saveDB(true);
-        if (status) status.textContent = 'Auto-saved';
-      });
+      const _noteId = note.id, _noteSnap = { title: note.title, body: note.body, updated: note.updated };
+      clearTimeout(window._noteSaveTimer);
+      window._noteSaveTimer = setTimeout(() => {
+        apiFetch('/api/notes/' + _noteId, { method: 'PUT', body: JSON.stringify({ note: _noteSnap }) })
+          .then(() => { if (status) status.textContent = 'Auto-saved'; })
+          .catch(() => { if (status) status.textContent = 'Save failed'; });
+      }, 700);
     }
 
     async function deleteCurrentNote() {
@@ -20713,7 +20728,18 @@
       m.querySelectorAll('input').forEach(el => { el.value = ''; delete el.dataset.iso; });
       m.querySelector('.m-project').value = '';
       m.classList.remove('is-open');
-      persistAndRender([renderMeetings, renderOverview, () => { if (currentProjectId) renderProjectDetail(currentProjectId); }]);
+      const meetingId = editingMeetingId || null;
+      const meeting = meetingId
+        ? db.meetings.find(x => x.id === meetingId)
+        : db.meetings[db.meetings.length - 1];
+      if (meeting) {
+        if (isNew) {
+          apiFetch('/api/meetings', { method: 'POST', body: JSON.stringify({ meeting }) }).catch(() => {});
+        } else {
+          apiFetch('/api/meetings/' + meetingId, { method: 'PUT', body: JSON.stringify({ meeting }) }).catch(() => {});
+        }
+      }
+      persistAndRender([renderMeetings, renderOverview, () => { if (currentProjectId) renderProjectDetail(currentProjectId); }], { save: false });
     }
 
     function editMeeting(id) {
@@ -22238,7 +22264,8 @@
         }
       });
 
-      saveDB(true);
+      const newMtg = db.meetings[db.meetings.length - 1];
+      apiFetch('/api/meetings', { method: 'POST', body: JSON.stringify({ meeting: newMtg }) }).catch(() => {});
       showToast('Meeting scheduled successfully!', 'success');
       closeScheduleMeetingPopover();
       renderCalendar();
@@ -22427,9 +22454,11 @@
       const task = s && (s.tasks || []).find(x => x.id === tid);
       if (!task) return;
       task.description = event.target.value;
-      debounceSave('task-desc-' + tid, () => {
-        saveDB(true);
-      });
+      const _tId = task.id, _tDesc = task.description;
+      clearTimeout(window['_taskDescSaveTimer_' + _tId]);
+      window['_taskDescSaveTimer_' + _tId] = setTimeout(() => {
+        apiFetch('/api/tasks/' + _tId, { method: 'PUT', body: JSON.stringify({ task: { ...task, description: _tDesc }, projectId: pid, sprintId: sid }) }).catch(() => {});
+      }, 700);
     };
 
     window.unassignCompactTask = function(event, pid, sid, tid) {
@@ -22438,7 +22467,7 @@
       const task = s && (s.tasks || []).find(x => x.id === tid);
       if (!task) return;
       task.assigneeId = '';
-      saveDB(true);
+      apiFetch('/api/tasks/' + task.id, { method: 'PUT', body: JSON.stringify({ task, projectId: pid, sprintId: sid }) }).catch(() => {});
       const container = document.getElementById('compact-task-assignee-row');
       if (container) container.innerHTML = renderCompactAssigneeUI(p, s, task);
     };
@@ -22494,7 +22523,7 @@
       if (memberId && memberId !== currentUserId && memberId !== oldAssignee) {
         addNotification(memberId, '<b>' + escapeHtml(displayNameFor(currentUserId)) + '</b> assigned you to task <b>' + escapeHtml(task.title) + '</b> in <b>' + escapeHtml(s.name) + '</b>.', p.id, { actorId: currentUserId });
       }
-      saveDB(true);
+      apiFetch('/api/tasks/' + task.id, { method: 'PUT', body: JSON.stringify({ task, projectId: pid, sprintId: sid }) }).catch(() => {});
       renderNotifications();
       const container = document.getElementById('compact-task-assignee-row');
       if (container) container.innerHTML = renderCompactAssigneeUI(p, s, task);
