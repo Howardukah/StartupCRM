@@ -1013,18 +1013,15 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
         const me = d.team.find(m => m.id === userId);
         userRole = me ? me.role : 'Member';
         userName = me ? me.name : 'User';
-        // Update auth screen with real name & avatar
         authAvatar.textContent = userName[0].toUpperCase();
         authName.textContent = userName;
         authStatus.textContent = 'Welcome back!';
       }
     } catch {}
 
-    // Style and populate user name badge
     roleBadge.textContent = userName;
     roleBadge.className = 'role-badge ' + (userRole === 'Admin' ? 'admin' : 'member');
 
-    // Small pause so the auth screen feels intentional, then fade out
     await new Promise(r => setTimeout(r, 900));
     hideAuthScreen();
 
@@ -1035,30 +1032,34 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
         fetchAllProjects();
         if (activeProjectId) loadProjectAssets(activeProjectId, activeNameEl.textContent);
       });
+      // Real-time quota update — no refresh needed
+      socket.on('bucket_quota_updated', (payload) => {
+        if (!payload || !payload.quotaBytes) return;
+        if (payload.projectId && payload.projectId !== activeProjectId) return;
+        activeProjectQuotaBytes = payload.quotaBytes;
+        renderAssets(allAssets);
+        showSlideNotification('Quota Updated', `Storage quota updated to ${(payload.quotaBytes / (1024 * 1024)).toFixed(0)} MB.`, 'success');
+      });
     }
 
     if (LOCKED_PROJECT_ID) {
-      // ── LOCKED MODE: member sees only one project, no sidebar ──
       sidebar.classList.add('hidden');
       await loadProjectAssets(LOCKED_PROJECT_ID);
     } else if (userRole === 'Admin') {
-      // ── ADMIN FREE-BROWSE: show sidebar with all projects ──
       sidebar.classList.remove('hidden');
-        await fetchAllProjects();
-        stateLoading.style.display = 'none';
-        statePick.style.display = 'flex';
+      await fetchAllProjects();
+      stateLoading.style.display = 'none';
+      statePick.style.display = 'flex';
     } else {
-      // ── NON-ADMIN: sidebar always hidden; auto-load first accessible project ──
       sidebar.classList.add('hidden');
       const projects = await fetchAccessibleProjects();
       if (projects.length >= 1) {
-        // Auto-load the first project; member never sees the sidebar
         await loadProjectAssets(projects[0].id, projects[0].name);
       } else {
         stateLoading.style.display = 'none';
         statePick.style.display = 'flex';
         statePick.querySelector('h3').textContent = 'No Projects Assigned';
-        statePick.querySelector('p').textContent = 'You haven\'t been added to any projects yet. Contact your admin.';
+        statePick.querySelector('p').textContent = "You haven't been added to any projects yet. Contact your admin.";
       }
     }
   }

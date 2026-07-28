@@ -1683,6 +1683,12 @@ input[type=file]{display:none}
     socket.on('db_changed', () => {
       loadFiles();
     });
+    // Real-time quota update from admin — update bar instantly
+    socket.on('bucket_quota_updated', (payload) => {
+      if (!payload || !payload.quotaBytes) return;
+      quotaBytes = payload.quotaBytes;
+      updateStorage(usedBytes, quotaBytes);
+    });
     socket.on('bucket_restricted', payload => {
       bucketSessionRestricted = true;
       try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}

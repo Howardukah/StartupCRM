@@ -4668,7 +4668,15 @@ app.post('/api/asset-buckets/:bucketId/quota', validateSession, async (req, res)
       project.assetBucketConfig.customQuotaBytes = quotaMB * 1024 * 1024;
       await setCrmData(crmData);
     }
-    res.json({ ok: true, quotaBytes: quotaMB * 1024 * 1024 });
+
+    const quotaBytes = quotaMB * 1024 * 1024;
+
+    // Notify any open storage/upload tabs for this bucket in real-time
+    io.to('asset-bucket:' + req.params.bucketId).emit('bucket_quota_updated', { quotaBytes });
+    // Also notify the CRM storage.html tabs (authenticated users watching this project)
+    io.emit('bucket_quota_updated', { bucketId: req.params.bucketId, projectId: bucket.project_id, quotaBytes });
+
+    res.json({ ok: true, quotaBytes });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
