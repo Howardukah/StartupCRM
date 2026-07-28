@@ -601,13 +601,9 @@ io.on('connection', (socket) => {
 const SESSION_VERIFY_INTERVAL_MS = 5 * 60 * 1000;
 const sessionLastVerified = new Map(); // userId → timestamp
 
-// Prune stale loginAttempt records every 10 min
+// Prune stale sessionLastVerified entries every 10 min
 setInterval(() => {
   const now = Date.now();
-  for (const [key, a] of loginAttempts) {
-    if (now - a.first > LOCKOUT_MS * 2) loginAttempts.delete(key);
-  }
-  // Prune old lastVerified entries
   for (const [uid, ts] of sessionLastVerified) {
     if (now - ts > SESSION_VERIFY_INTERVAL_MS * 3) sessionLastVerified.delete(uid);
   }

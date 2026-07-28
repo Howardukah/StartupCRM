@@ -11840,6 +11840,8 @@
     let _lastOfflineNoticeAt = 0;
     const _memberSuspensionPending = new Set();
     const _pendingTaskToggles = new Map();
+    // Guard against concurrent deletes of the same entity (race condition protection)
+    const _deletingIds = new Set();
 
     function isNetworkError(error) {
       if (navigator.onLine === false) return true;
@@ -20510,6 +20512,7 @@
     }
 
     async function deleteClient(id) {
+      if (_deletingIds.has('client:' + id)) return;
       const relProjects = db.projects.filter(p => p.clientId === id);
       if (relProjects.length) {
         showToast('Cannot delete a client that still has projects assigned. Remove or reassign projects first.', 'error');
@@ -20517,8 +20520,14 @@
       }
       const ok = await confirmDialog('Delete this client? This cannot be undone.', { title: 'Delete client?', okLabel: 'Delete' });
       if (!ok) return;
-      db.clients = db.clients.filter(x => x.id !== id);
-      persistAndRender([renderClients, renderProjects, renderOverview, populateDropdowns]);
+      _deletingIds.add('client:' + id);
+      try {
+        if (!db.clients.find(x => x.id === id)) return; // already gone
+        db.clients = db.clients.filter(x => x.id !== id);
+        persistAndRender([renderClients, renderProjects, renderOverview, populateDropdowns]);
+      } finally {
+        _deletingIds.delete('client:' + id);
+      }
     }
 
     function openClientPreview(id) {
@@ -20709,13 +20718,20 @@
     }
 
     async function deleteMeeting(id) {
+      if (_deletingIds.has('meeting:' + id)) return;
       if (!isAdmin()) { showToast('Only admins can delete meetings.', 'error'); return; }
       const ok = await confirmDialog('Delete this meeting? This cannot be undone.', { title: 'Delete meeting?', okLabel: 'Delete' });
       if (!ok) return;
-      db.deletedMeetingIds = Array.from(new Set((db.deletedMeetingIds || []).concat(id)));
-      db.meetings = db.meetings.filter(x => x.id !== id);
-      persistAndRender([renderMeetings, renderOverview, () => { if (currentProjectId) renderProjectDetail(currentProjectId); }]);
-      await saveDB(false);
+      _deletingIds.add('meeting:' + id);
+      try {
+        if (!db.meetings.find(x => x.id === id)) return; // already gone
+        db.deletedMeetingIds = Array.from(new Set((db.deletedMeetingIds || []).concat(id)));
+        db.meetings = db.meetings.filter(x => x.id !== id);
+        persistAndRender([renderMeetings, renderOverview, () => { if (currentProjectId) renderProjectDetail(currentProjectId); }]);
+        await saveDB(false);
+      } finally {
+        _deletingIds.delete('meeting:' + id);
+      }
     }
 
     function openInviteModal() {
@@ -21316,6 +21332,7 @@
     }
 
     async function deleteMember(id) {
+      if (_deletingIds.has('member:' + id)) return;
       if (!isAdmin()) { showToast('Only admins can delete team members.', 'error'); return; }
       if (id === currentUserId) {
         showToast('You cannot delete yourself.', 'error');
@@ -21333,32 +21350,39 @@
 
       const ok = await confirmDialog('Delete this team member? They will be removed from all projects. This cannot be undone.', { title: 'Delete team member?', okLabel: 'Delete' });
       if (!ok) return;
+      if (_deletingIds.has('member:' + id)) return;
+      _deletingIds.add('member:' + id);
+      try {
+        if (!db.team.find(m => m.id === id)) return; // already gone
 
-      db.projects.forEach(p => {
-        if (p.team && p.team.includes(id)) {
-          p.team = p.team.filter(tid => tid !== id);
-        }
-        if (p.ownerId === id) {
-          p.ownerId = currentUserId;
-        }
-        if (p.projectLeadId === id) {
-          p.projectLeadId = '';
-        }
-        (p.sprints || []).forEach(s => {
-          (s.tasks || []).forEach(t => {
-            if (t.assigneeId === id) t.assigneeId = '';
+        db.projects.forEach(p => {
+          if (p.team && p.team.includes(id)) {
+            p.team = p.team.filter(tid => tid !== id);
+          }
+          if (p.ownerId === id) {
+            p.ownerId = currentUserId;
+          }
+          if (p.projectLeadId === id) {
+            p.projectLeadId = '';
+          }
+          (p.sprints || []).forEach(s => {
+            (s.tasks || []).forEach(t => {
+              if (t.assigneeId === id) t.assigneeId = '';
+            });
           });
         });
-      });
 
-      db.clients.forEach(c => {
-        if (c.ownerId === id) {
-          c.ownerId = currentUserId;
-        }
-      });
+        db.clients.forEach(c => {
+          if (c.ownerId === id) {
+            c.ownerId = currentUserId;
+          }
+        });
 
-      db.team = db.team.filter(x => x.id !== id);
-      await saveTeamChange('Team member deleted.');
+        db.team = db.team.filter(x => x.id !== id);
+        await saveTeamChange('Team member deleted.');
+      } finally {
+        _deletingIds.delete('member:' + id);
+      }
     }
 
     // ── Member Preview Modal Handlers ──
@@ -21800,17 +21824,24 @@
     }
 
     async function deleteProject(id) {
+      if (_deletingIds.has('project:' + id)) return;
       const projToDel = db.projects.find(x => x.id === id);
       if (projToDel && projToDel.status === 'paused') { showToast('This project is paused and cannot be deleted.', 'error'); return; }
       const ok = await confirmDialog('Delete this project and all its sprints? This cannot be undone.', { title: 'Delete project?', okLabel: 'Delete' });
       if (!ok) return;
-      db.projects = db.projects.filter(x => x.id !== id);
-      logActivity('deleted project');
-      if (currentProjectId === id) {
-        currentProjectId = null;
-        goSection('projects');
+      _deletingIds.add('project:' + id);
+      try {
+        if (!db.projects.find(x => x.id === id)) return; // already gone
+        db.projects = db.projects.filter(x => x.id !== id);
+        logActivity('deleted project');
+        if (currentProjectId === id) {
+          currentProjectId = null;
+          goSection('projects');
+        }
+        persistAndRender([renderProjects, renderOverview]);
+      } finally {
+        _deletingIds.delete('project:' + id);
       }
-      persistAndRender([renderProjects, renderOverview]);
     }
 
     function makeSprintMeetingTitle(index) {
@@ -21978,30 +22009,43 @@
 
     async function deleteSprint(pid, sid) {
       if (!isAdmin()) return;
+      if (_deletingIds.has('sprint:' + sid)) return;
       const ok = await confirmDialog('Delete this sprint? This cannot be undone.', { title: 'Delete sprint?', okLabel: 'Delete' });
       if (!ok) return;
-      const p = getProject(pid);
-      if (!p) return;
-      p.sprints = p.sprints.filter(x => x.id !== sid);
-      syncSprintMeetings(p);
-      persistAndRender([() => renderProjectDetail(pid), renderProjects, renderMeetings, renderOverview]);
+      _deletingIds.add('sprint:' + sid);
+      try {
+        const p = getProject(pid);
+        if (!p || !p.sprints.find(x => x.id === sid)) { return; } // already gone
+        p.sprints = p.sprints.filter(x => x.id !== sid);
+        syncSprintMeetings(p);
+        persistAndRender([() => renderProjectDetail(pid), renderProjects, renderMeetings, renderOverview]);
+      } finally {
+        _deletingIds.delete('sprint:' + sid);
+      }
     }
 
     function deleteTask(pid, sid, tid) {
+      if (_deletingIds.has('task:' + tid)) return;
       const p = getProject(pid); if (!p) return;
       const s = p.sprints.find(x => x.id === sid); if (!s) return;
       const task = s.tasks.find(x => x.id === tid);
       if (!task || !canEditTask(p, s, task)) return;
-      s.tasks = s.tasks.filter(x => x.id !== tid);
-      if (cleanupEmptySprints(p)) {
-        logActivity('removed empty sprint from <b>' + p.name + '</b> after deleting its last task');
+      _deletingIds.add('task:' + tid);
+      try {
+        if (!s.tasks.find(x => x.id === tid)) return; // already gone
+        s.tasks = s.tasks.filter(x => x.id !== tid);
+        if (cleanupEmptySprints(p)) {
+          logActivity('removed empty sprint from <b>' + p.name + '</b> after deleting its last task');
+        }
+        if (p.sprints.length === 0) {
+          logActivity('removed all empty sprints from <b>' + p.name + '</b>');
+        }
+        handleSprintTaskCompletion(p, s);
+        syncProjectLifecycleWithTasks(p);
+        persistAndRender([() => renderProjectDetail(pid), renderProjects, renderOverview, renderNotifications]);
+      } finally {
+        _deletingIds.delete('task:' + tid);
       }
-      if (p.sprints.length === 0) {
-        logActivity('removed all empty sprints from <b>' + p.name + '</b>');
-      }
-      handleSprintTaskCompletion(p, s);
-      syncProjectLifecycleWithTasks(p);
-      persistAndRender([() => renderProjectDetail(pid), renderProjects, renderOverview, renderNotifications]);
     }
 
     let _activeScheduleBtn = null;
