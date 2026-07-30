@@ -1249,6 +1249,7 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
       const onBackdrop = (e) => { if (e.target === confirmBackdrop) cleanup(false); };
       const onKey = (e) => { if (e.key === 'Escape') cleanup(false); };
       confirmOkBtn.addEventListener('click', onOk);
+      confirmCancelBtn.addEventListener('click', onCancel);
       confirmBackdrop.addEventListener('click', onBackdrop);
       document.addEventListener('keydown', onKey);
     });
