@@ -894,24 +894,79 @@ input[type=file]{display:none}
   </div>
 
   <div class="auth-panel">
-    <div class="auth-panel-title">Enter your access key</div>
-    <div class="auth-panel-sub" id="auth-sub">
-      Enter the <strong>5-character key</strong> you received in your welcome email to access your upload portal.
+    <!-- Key Form Panel -->
+    <div id="key-form-panel">
+      <div class="auth-panel-title">Enter your access key</div>
+      <div class="auth-panel-sub" id="auth-sub">
+        Enter the <strong>5-character key</strong> you received in your welcome email to access your upload portal.
+      </div>
+
+      <div class="key-label">Access Key</div>
+      <div class="key-input-wrap">
+        <input
+          type="text"
+          id="key-input"
+          class="key-input"
+          placeholder="XXXXX"
+          autocomplete="off"
+          spellcheck="false"
+        >
+      </div>
+      <button class="auth-btn" id="auth-btn" onclick="submitKey()">Verify Key</button>
+      <div class="auth-error" id="auth-error"></div>
     </div>
 
-    <div class="key-label">Access Key</div>
-    <div class="key-input-wrap">
-      <input
-        type="text"
-        id="key-input"
-        class="key-input"
-        placeholder="XXXXX"
-        autocomplete="off"
-        spellcheck="false"
-      >
+    <!-- Security Question Setup Panel -->
+    <div id="sec-setup-panel" style="display:none;">
+      <div class="auth-panel-title">Set Security Question</div>
+      <div class="auth-panel-sub">
+        For your privacy and portal protection, please configure a security question for your first-time setup.
+      </div>
+
+      <div class="key-label" style="margin-top:16px;">Select Question</div>
+      <select id="sec-setup-q-select" class="field__input" style="width:100%;margin-bottom:12px;padding:8px 12px;" onchange="toggleCustomQ(this)">
+        <option value="What was the name of your first school?">What was the name of your first school?</option>
+        <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+        <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+        <option value="In what city were you born?">In what city were you born?</option>
+        <option value="What was the make of your first car?">What was the make of your first car?</option>
+        <option value="__custom__">Custom Question...</option>
+      </select>
+
+      <div id="sec-custom-q-wrap" style="display:none;margin-bottom:12px;">
+        <div class="key-label">Custom Question</div>
+        <input type="text" id="sec-setup-custom-q" class="field__input" style="width:100%;padding:8px 12px;" placeholder="Type your custom question...">
+      </div>
+
+      <div class="key-label">Your Answer</div>
+      <div class="key-input-wrap" style="margin-bottom:16px;">
+        <input type="text" id="sec-setup-answer" class="field__input" style="width:100%;padding:10px 12px;font-size:15px;" placeholder="Enter your answer...">
+      </div>
+
+      <button class="auth-btn" id="sec-setup-btn" onclick="submitSecuritySetup()">Save & Continue</button>
+      <div class="auth-error" id="sec-setup-error"></div>
     </div>
-    <button class="auth-btn" id="auth-btn" onclick="submitKey()">Verify Key</button>
-    <div class="auth-error" id="auth-error"></div>
+
+    <!-- Security Question Verification Panel -->
+    <div id="sec-verify-panel" style="display:none;">
+      <div class="auth-panel-title">Security Verification</div>
+      <div class="auth-panel-sub">
+        Suspicious activity or a new device login was detected. Please answer your security question to continue.
+      </div>
+
+      <div class="key-label" style="margin-top:16px;">Security Question</div>
+      <div id="sec-verify-q-display" style="font-weight:700;color:var(--text);font-size:15px;margin-bottom:14px;background:var(--surface-2);padding:10px 12px;border-radius:6px;border:1px solid var(--border);"></div>
+
+      <div class="key-label">Your Answer</div>
+      <div class="key-input-wrap" style="margin-bottom:12px;">
+        <input type="text" id="sec-verify-answer" class="field__input" style="width:100%;padding:10px 12px;font-size:15px;" placeholder="Enter your answer...">
+      </div>
+
+      <div id="sec-attempts-badge" style="font-size:12px;color:var(--amber);margin-bottom:16px;font-weight:600;">Attempt 1 of 3 (3 tries max before bucket lockout)</div>
+
+      <button class="auth-btn" id="sec-verify-btn" onclick="submitSecurityVerify()">Verify Answer</button>
+      <div class="auth-error" id="sec-verify-error"></div>
+    </div>
 
     <div class="auth-hint">
       Contact <a class="auth-hint__support" href="mailto:support@startupbuild.tech">support@startupbuild.tech</a> if you are facing any issue logging in or have forgotten your password.
@@ -1213,6 +1268,31 @@ input[type=file]{display:none}
       }
 
       enteredKey = key;
+
+      // Handle First-Time Security Question Setup
+      if (data.step === 'setup_security_question') {
+        const keyPanel = document.getElementById('key-form-panel');
+        const setupPanel = document.getElementById('sec-setup-panel');
+        if (keyPanel) keyPanel.style.display = 'none';
+        if (setupPanel) setupPanel.style.display = 'block';
+        return;
+      }
+
+      // Handle Suspicious Login Verification
+      if (data.step === 'verify_security_question') {
+        const keyPanel = document.getElementById('key-form-panel');
+        const verifyPanel = document.getElementById('sec-verify-panel');
+        if (keyPanel) keyPanel.style.display = 'none';
+        if (verifyPanel) verifyPanel.style.display = 'block';
+        const qDisplay = document.getElementById('sec-verify-q-display');
+        if (qDisplay) qDisplay.textContent = data.question || 'Security Question';
+        if (data.attemptsLeft !== undefined) {
+          const badge = document.getElementById('sec-attempts-badge');
+          if (badge) badge.textContent = `Attempt ${4 - data.attemptsLeft} of 3 (${data.attemptsLeft} try/tries remaining)`;
+        }
+        return;
+      }
+
       // Persist auth so re-opening the link in this browser session skips the key screen
       try { sessionStorage.setItem('bucket-authed-' + bucketToken, '1'); } catch(e) {}
       showUploadScreen(data.projectName || projectInfo?.projectName || 'Your Project');
@@ -1223,6 +1303,108 @@ input[type=file]{display:none}
     }
   }
   window.submitKey = submitKey;
+
+  function toggleCustomQ(selectEl) {
+    const customWrap = document.getElementById('sec-custom-q-wrap');
+    if (customWrap) {
+      customWrap.style.display = selectEl.value === '__custom__' ? 'block' : 'none';
+    }
+  }
+  window.toggleCustomQ = toggleCustomQ;
+
+  async function submitSecuritySetup() {
+    const selectEl = document.getElementById('sec-setup-q-select');
+    const customQInput = document.getElementById('sec-setup-custom-q');
+    const answerInput = document.getElementById('sec-setup-answer');
+    const errEl = document.getElementById('sec-setup-error');
+    const btn = document.getElementById('sec-setup-btn');
+
+    let question = selectEl.value === '__custom__' ? (customQInput.value || '').trim() : selectEl.value;
+    let answer = (answerInput.value || '').trim();
+
+    if (!question) {
+      errEl.textContent = 'Please select or type a security question.';
+      return;
+    }
+    if (!answer) {
+      errEl.textContent = 'Please enter your answer.';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    errEl.textContent = '';
+
+    try {
+      const res = await fetch(SERVER + '/api/asset-bucket/setup-security/' + bucketToken, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secretKey: enteredKey, question, answer }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.ok) {
+        errEl.textContent = data.error || 'Failed to save security question.';
+        btn.disabled = false;
+        btn.textContent = 'Save & Continue';
+        return;
+      }
+
+      try { sessionStorage.setItem('bucket-authed-' + bucketToken, '1'); } catch(e) {}
+      showUploadScreen(data.projectName || projectInfo?.projectName || 'Your Project');
+    } catch (e) {
+      errEl.textContent = 'Connection error. Please try again.';
+      btn.disabled = false;
+      btn.textContent = 'Save & Continue';
+    }
+  }
+  window.submitSecuritySetup = submitSecuritySetup;
+
+  async function submitSecurityVerify() {
+    const answerInput = document.getElementById('sec-verify-answer');
+    const errEl = document.getElementById('sec-verify-error');
+    const btn = document.getElementById('sec-verify-btn');
+    let answer = (answerInput.value || '').trim();
+
+    if (!answer) {
+      errEl.textContent = 'Please enter your answer.';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Verifying...';
+    errEl.textContent = '';
+
+    try {
+      const res = await fetch(SERVER + '/api/asset-bucket/verify-security/' + bucketToken, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secretKey: enteredKey, answer }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 403) {
+        try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}
+        showInvalid(data.error || 'Maximum security attempts exceeded. Upload portal is locked.');
+        return;
+      }
+
+      if (!res.ok || !data.ok) {
+        errEl.textContent = data.error || 'Incorrect answer. Please try again.';
+        btn.disabled = false;
+        btn.textContent = 'Verify Answer';
+        return;
+      }
+
+      try { sessionStorage.setItem('bucket-authed-' + bucketToken, '1'); } catch(e) {}
+      showUploadScreen(data.projectName || projectInfo?.projectName || 'Your Project');
+    } catch (e) {
+      errEl.textContent = 'Connection error. Please try again.';
+      btn.disabled = false;
+      btn.textContent = 'Verify Answer';
+    }
+  }
+  window.submitSecurityVerify = submitSecurityVerify;
 
   // Start the flow
   if (!bucketToken || bucketToken === 'upload.html') {

@@ -40,6 +40,20 @@ const corsOrigins = process.env.CORS_ORIGIN
   : (process.env.NODE_ENV === 'production' ? false : true);
 app.use(cors({ origin: corsOrigins, exposedHeaders: ['X-Plan-Filename'] }));
 
+function normalizeIpSubnet(ip) {
+  if (!ip) return '';
+  const clean = String(ip).replace(/^::ffff:/, '').trim();
+  if (clean.includes('.')) {
+    const parts = clean.split('.');
+    return parts.slice(0, 3).join('.'); // IPv4 /24 subnet (e.g. 192.168.1)
+  }
+  if (clean.includes(':')) {
+    const parts = clean.split(':');
+    return parts.slice(0, 3).join(':'); // IPv6 /48 subnet (e.g. 2001:db8:85a3)
+  }
+  return clean;
+}
+
 // ── Security: Global rate limiter (100 req/min per IP) ─────────────────
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -4644,6 +4658,15 @@ app.post('/api/asset-buckets/:bucketId/revoke', validateSession, async (req, res
     invalidateBucketCache();
     if (revoked) restrictActiveAssetBucketSessions(req.params.bucketId);
 
+    // Track toggle count during failed attempt window
+    if (bucketBefore?.project_id) {
+      const p = (crmData.projects || []).find(proj => proj.id === bucketBefore.project_id);
+      if (p && p.assetBucketConfig && (p.assetBucketConfig.failedLoginCount || 0) > 0) {
+        p.assetBucketConfig.toggleCountDuringFailed = (p.assetBucketConfig.toggleCountDuringFailed || 0) + 1;
+        await setCrmData(crmData);
+      }
+    }
+
     res.json({ ok: true, revoked });
     appendActivity(makeActivityEntry(req, {
       actorId: req.userId,
@@ -4971,29 +4994,237 @@ app.post('/api/asset-bucket/auth/:token', bucketAuthLimiter, async (req, res) =>
     }
 
     const bucket = await getBucketByToken(req.params.token);
-    const error = !bucket;
-
-    if (error || !bucket) return res.status(404).json({ ok: false, error: 'Upload link not found.' });
+    if (!bucket) return res.status(404).json({ ok: false, error: 'Upload link not found.' });
     if (bucket.revoked) return res.status(403).json({ ok: false, error: 'This upload link has been restricted.' });
     if (!bucket.secret_key) return res.status(500).json({ ok: false, error: 'This bucket has no access key configured. Contact your admin.' });
 
+    const crmData = await getCrmData();
+    const project = (crmData.projects || []).find(p => p.id === bucket.project_id);
+    if (project && !project.assetBucketConfig) project.assetBucketConfig = {};
+    const cfg = project ? project.assetBucketConfig : {};
+
+    if (cfg.secLockedUntil && Date.now() < new Date(cfg.secLockedUntil).getTime()) {
+      return res.status(403).json({ ok: false, error: 'Maximum security question attempts exceeded. Upload portal is locked. Contact your project manager.' });
+    }
+
     const cleanKey = secretKey.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     const match = await bcrypt.compare(cleanKey, bucket.secret_key);
+
     if (!match) {
+      if (project) {
+        project.assetBucketConfig.failedLoginCount = (project.assetBucketConfig.failedLoginCount || 0) + 1;
+        await setCrmData(crmData);
+      }
       return res.status(401).json({ ok: false, error: 'Incorrect access key. Please check and try again.' });
     }
 
-    // Key matched — look up project name and return success
-    const crmData = await getCrmData();
-    const project = (crmData.projects || []).find(p => p.id === bucket.project_id);
     const projectName = project ? (project.name || project.title || bucket.project_id) : bucket.project_id;
-
     const customQuota = project?.assetBucketConfig?.customQuotaBytes;
     const quotaBytes = customQuota ? parseInt(customQuota) : CLIENT_QUOTA_BYTES;
+    const reqIp = requestIp(req);
+    const reqSubnet = normalizeIpSubnet(reqIp);
+    const lastSubnet = normalizeIpSubnet(cfg.lastIp);
+
+    // 1.1 First-time login: check if security question is set
+    const hasSecurity = !!(cfg.securityQuestion && cfg.securityAnswerHash);
+    if (!hasSecurity) {
+      return res.json({
+        ok: true,
+        step: 'setup_security_question',
+        bucketId: bucket.id,
+        projectId: bucket.project_id,
+        projectName
+      });
+    }
+
+    // 1.2 Definition of "suspicious login"
+    const failedCount = cfg.failedLoginCount || 0;
+    const toggleCount = cfg.toggleCountDuringFailed || 0;
+
+    const triggerA = failedCount >= 5;
+    const triggerB = failedCount >= 10 && toggleCount > 0;
+    const triggerC = !!(lastSubnet && reqSubnet !== lastSubnet);
+    const isSuspicious = triggerA || triggerB || triggerC;
+
+    if (isSuspicious) {
+      if (triggerC) {
+        const clientEmail = project?.contactEmail || project?.clientEmail || process.env.SUPPORT_EMAIL || 'support@startupbuild.tech';
+        sendMailWithFallback({
+          from: `"${process.env.SMTP_FROM_NAME || 'Startup CRM'}" <${process.env.SMTP_USER || 'noreply@startupbuild.tech'}>`,
+          to: clientEmail,
+          subject: `⚠️ Security Alert: New login detected on ${projectName} asset portal`,
+          html: `<div style="font-family:Arial,sans-serif;padding:20px;background:#f7f7f9;">
+            <h2 style="color:#d9534f;">⚠️ New Login / Device Detected</h2>
+            <p>A login to the <strong>${projectName}</strong> asset portal was detected from a new IP address or device.</p>
+            <p><strong>Approx. Time:</strong> ${new Date().toUTCString()}</p>
+            <p><strong>IP Address:</strong> ${reqIp}</p>
+            <p><strong>Device:</strong> ${requestUserAgent(req)}</p>
+            <p>If this was you, please verify your security question on screen. If you did not authorize this, contact support immediately.</p>
+          </div>`
+        }).catch(e => console.warn('Security email alert failed:', e.message));
+      }
+
+      appendActivity(makeActivityEntry(req, {
+        actorType: 'system',
+        action: 'security.suspicious_login_detected',
+        targetType: 'asset_bucket',
+        targetId: bucket.id,
+        targetName: projectName,
+        text: `Suspicious login detected on ${projectName} bucket (Trigger: ${triggerA ? '5+ failed attempts' : triggerB ? '10+ failed + toggled' : 'IP subnet change'}). Security question required.`,
+        metadata: { projectId: bucket.project_id, ip: reqIp, triggerA, triggerB, triggerC }
+      })).catch(() => {});
+
+      return res.json({
+        ok: true,
+        step: 'verify_security_question',
+        question: cfg.securityQuestion,
+        attemptsLeft: Math.max(1, 3 - (cfg.secAttemptsCount || 0)),
+        reason: 'suspicious_login'
+      });
+    }
+
+    // Normal trusted login
+    cfg.failedLoginCount = 0;
+    cfg.toggleCountDuringFailed = 0;
+    cfg.secAttemptsCount = 0;
+    cfg.lastIp = reqIp;
+    await setCrmData(crmData);
 
     res.json({ ok: true, projectId: bucket.project_id, projectName, quotaBytes });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/asset-bucket/setup-security/:token — Public: First-time security question setup
+app.post('/api/asset-bucket/setup-security/:token', bucketAuthLimiter, async (req, res) => {
+  try {
+    const { secretKey, question, answer } = req.body || {};
+    if (!secretKey || !question || !answer || typeof answer !== 'string') {
+      return res.status(400).json({ ok: false, error: 'Question and answer are required.' });
+    }
+
+    const bucket = await getBucketByToken(req.params.token);
+    if (!bucket || bucket.revoked) return res.status(403).json({ ok: false, error: 'Link invalid or restricted.' });
+
+    const cleanKey = secretKey.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const match = await bcrypt.compare(cleanKey, bucket.secret_key);
+    if (!match) return res.status(401).json({ ok: false, error: 'Invalid access key.' });
+
+    const crmData = await getCrmData();
+    const project = (crmData.projects || []).find(p => p.id === bucket.project_id);
+    if (!project) return res.status(404).json({ ok: false, error: 'Project not found.' });
+
+    if (!project.assetBucketConfig) project.assetBucketConfig = {};
+    const cleanAnswer = String(answer).trim().toLowerCase();
+    const answerHash = await bcrypt.hash(cleanAnswer, 10);
+
+    project.assetBucketConfig.securityQuestion = String(question).trim();
+    project.assetBucketConfig.securityAnswerHash = answerHash;
+    project.assetBucketConfig.lastIp = requestIp(req);
+    project.assetBucketConfig.failedLoginCount = 0;
+    project.assetBucketConfig.toggleCountDuringFailed = 0;
+    project.assetBucketConfig.secAttemptsCount = 0;
+    project.assetBucketConfig.secLockedUntil = null;
+
+    await setCrmData(crmData);
+
+    appendActivity(makeActivityEntry(req, {
+      actorType: 'system',
+      action: 'security.security_question_set',
+      targetType: 'asset_bucket',
+      targetId: bucket.id,
+      targetName: project.name || bucket.project_id,
+      text: `Security question configured for ${project.name || bucket.project_id} upload portal.`,
+    })).catch(() => {});
+
+    const customQuota = project.assetBucketConfig?.customQuotaBytes;
+    const quotaBytes = customQuota ? parseInt(customQuota) : CLIENT_QUOTA_BYTES;
+
+    res.json({ ok: true, projectId: bucket.project_id, projectName: project.name || bucket.project_id, quotaBytes });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/asset-bucket/verify-security/:token — Public: Verify security question answer
+const secVerifyLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, message: { ok: false, error: 'Too many security attempts. Please wait 15 minutes.' } });
+app.post('/api/asset-bucket/verify-security/:token', secVerifyLimiter, async (req, res) => {
+  try {
+    const { secretKey, answer } = req.body || {};
+    if (!secretKey || !answer || typeof answer !== 'string') {
+      return res.status(400).json({ ok: false, error: 'Answer is required.' });
+    }
+
+    const bucket = await getBucketByToken(req.params.token);
+    if (!bucket || bucket.revoked) return res.status(403).json({ ok: false, error: 'Link invalid or restricted.' });
+
+    const cleanKey = secretKey.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const match = await bcrypt.compare(cleanKey, bucket.secret_key);
+    if (!match) return res.status(401).json({ ok: false, error: 'Invalid access key.' });
+
+    const crmData = await getCrmData();
+    const project = (crmData.projects || []).find(p => p.id === bucket.project_id);
+    if (!project || !project.assetBucketConfig?.securityAnswerHash) {
+      return res.status(400).json({ ok: false, error: 'Security question not configured.' });
+    }
+
+    const cfg = project.assetBucketConfig;
+    if (cfg.secLockedUntil && Date.now() < new Date(cfg.secLockedUntil).getTime()) {
+      return res.status(403).json({ ok: false, error: 'Maximum security attempts exceeded. Upload portal is locked.' });
+    }
+
+    const cleanAnswer = String(answer).trim().toLowerCase();
+    const answerMatch = await bcrypt.compare(cleanAnswer, cfg.securityAnswerHash);
+
+    if (answerMatch) {
+      cfg.failedLoginCount = 0;
+      cfg.toggleCountDuringFailed = 0;
+      cfg.secAttemptsCount = 0;
+      cfg.secLockedUntil = null;
+      cfg.lastIp = requestIp(req);
+      await setCrmData(crmData);
+
+      appendActivity(makeActivityEntry(req, {
+        actorType: 'system',
+        action: 'security.security_question_passed',
+        targetType: 'asset_bucket',
+        targetId: bucket.id,
+        targetName: project.name || bucket.project_id,
+        text: `Security question verified successfully for ${project.name || bucket.project_id} upload portal.`,
+      })).catch(() => {});
+
+      const customQuota = cfg.customQuotaBytes;
+      const quotaBytes = customQuota ? parseInt(customQuota) : CLIENT_QUOTA_BYTES;
+      return res.json({ ok: true, verified: true, projectId: bucket.project_id, projectName: project.name || bucket.project_id, quotaBytes });
+    } else {
+      cfg.secAttemptsCount = (cfg.secAttemptsCount || 0) + 1;
+      const attemptsLeft = Math.max(0, 3 - cfg.secAttemptsCount);
+
+      if (attemptsLeft === 0) {
+        cfg.secLockedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        await supabase.from('asset_buckets').update({ revoked: true }).eq('id', bucket.id);
+        invalidateBucketCache();
+        restrictActiveAssetBucketSessions(bucket.id, 'Upload link locked due to 3 failed security question attempts.');
+        await setCrmData(crmData);
+
+        appendActivity(makeActivityEntry(req, {
+          actorType: 'system',
+          action: 'security.bucket_locked_max_security_attempts',
+          targetType: 'asset_bucket',
+          targetId: bucket.id,
+          targetName: project.name || bucket.project_id,
+          text: `Upload portal for ${project.name || bucket.project_id} locked after 3 failed security question attempts.`,
+        })).catch(() => {});
+
+        return res.status(403).json({ ok: false, error: 'Maximum security question attempts exceeded. Upload portal has been locked. Please contact your project manager.' });
+      }
+
+      await setCrmData(crmData);
+      return res.status(400).json({ ok: false, error: `Incorrect answer. ${attemptsLeft} attempt(s) remaining.` });
+    }
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
