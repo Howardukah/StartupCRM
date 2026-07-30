@@ -538,6 +538,14 @@ async function migrateMailboxAddresses() {
           changed = true;
           console.log(`📧 Updated team member ${m.name} -> Assigned mailboxAddress: ${expectedAddr}`);
         }
+        if (m.name && (m.name.toLowerCase().includes('howard') || (m.email && m.email.toLowerCase().includes('howard')) || (m.mailboxAddress && m.mailboxAddress.includes('howard')))) {
+          const defaultAliases = ['hello@startupbuild.tech', 'hr@startupbuild.tech', 'support@startupbuild.tech'];
+          if (!Array.isArray(m.sharedMailboxes) || !defaultAliases.every(a => m.sharedMailboxes.includes(a))) {
+            m.sharedMailboxes = Array.from(new Set([...(m.sharedMailboxes || []), ...defaultAliases]));
+            changed = true;
+            console.log(`📧 Configured sharedMailboxes for ${m.name}: ${m.sharedMailboxes.join(', ')}`);
+          }
+        }
       }
     }
     
@@ -911,9 +919,11 @@ app.post('/webhooks/inbound-mail', async (req, res) => {
     addClean(emailData.bcc);
     addClean(emailData.received_for);
 
-    const matchingMembers = team.filter(m => 
-      m && m.mailboxAddress && recipients.has(m.mailboxAddress.toLowerCase())
-    );
+    const matchingMembers = team.filter(m => {
+      if (!m) return false;
+      const addrs = [m.mailboxAddress, ...(m.sharedMailboxes || [])].filter(Boolean).map(a => a.toLowerCase());
+      return addrs.some(a => recipients.has(a));
+    });
 
     if (matchingMembers.length === 0) {
       console.warn(`📧 Received inbound mail for ${Array.from(recipients).join(', ')} but no matching team member found.`);
@@ -1907,31 +1917,75 @@ app.delete('/api/meetings/:id', validateSession, async (req, res) => {
 });
 
 // DELETE /api/team/:id
+function isSpreadsheetEmpty(sheet) {
+  if (!sheet) return true;
+  if (!Array.isArray(sheet.tabs) || sheet.tabs.length === 0) return true;
+  for (const tab of sheet.tabs) {
+    if (!tab || !tab.cells || typeof tab.cells !== 'object') continue;
+    for (const key of Object.keys(tab.cells)) {
+      const cell = tab.cells[key];
+      if (cell === undefined || cell === null) continue;
+      let val = '';
+      if (typeof cell === 'object') {
+        val = String(cell.raw !== undefined ? cell.raw : (cell.formatted !== undefined ? cell.formatted : (cell.v !== undefined ? cell.v : (cell.value !== undefined ? cell.value : '')))).trim();
+      } else {
+        val = String(cell).trim();
+      }
+      if (val !== '') return false;
+    }
+  }
+  return true;
+}
+
+// DELETE /api/team/:id
 app.delete('/api/team/:id', validateSession, async (req, res) => {
   try {
     const { id } = req.params;
     if (id === req.userId) return res.status(400).json({ error: 'You cannot delete yourself.' });
-    const crmData = await getCrmData();
-    const me = (crmData.team || []).find(m => m.id === req.userId);
-    if (!me || me.role !== 'Admin') return res.status(403).json({ error: 'Only admins can delete team members.' });
-    const member = (crmData.team || []).find(m => m && m.id === id);
-    if (member && member.role === 'Admin') {
-      const admins = (crmData.team || []).filter(m => m && m.role === 'Admin');
-      if (admins.length <= 1) return res.status(400).json({ error: 'Cannot delete the last Admin. Promote another member first.' });
-    }
-    (crmData.projects || []).forEach(p => {
-      if (p.team && p.team.includes(id)) p.team = p.team.filter(tid => tid !== id);
-      if (p.ownerId === id) p.ownerId = req.userId;
-      if (p.projectLeadId === id) p.projectLeadId = '';
-      (p.sprints || []).forEach(s => {
-        (s.tasks || []).forEach(t => { if (t.assigneeId === id) t.assigneeId = ''; });
+    await withCrmWriteLock(async () => {
+      const crmData = await getCrmData();
+      const me = (crmData.team || []).find(m => m.id === req.userId);
+      if (!me || me.role !== 'Admin') throw new Error('FORBIDDEN_ADMIN');
+      const member = (crmData.team || []).find(m => m && m.id === id);
+      if (member && member.role === 'Admin') {
+        const admins = (crmData.team || []).filter(m => m && m.role === 'Admin');
+        if (admins.length <= 1) throw new Error('LAST_ADMIN');
+      }
+      (crmData.projects || []).forEach(p => {
+        if (p.team && p.team.includes(id)) p.team = p.team.filter(tid => tid !== id);
+        if (p.ownerId === id) p.ownerId = req.userId;
+        if (p.projectLeadId === id) p.projectLeadId = '';
+        (p.sprints || []).forEach(s => {
+          (s.tasks || []).forEach(t => { if (t.assigneeId === id) t.assigneeId = ''; });
+        });
       });
+      (crmData.clients || []).forEach(c => { if (c.ownerId === id) c.ownerId = req.userId; });
+
+      // ── Task 1: Spreadsheet cleanup for deleted member ──
+      if (Array.isArray(crmData.spreadsheets)) {
+        crmData.spreadsheets = crmData.spreadsheets.filter(s => {
+          if (!s) return false;
+          if (s.ownerId === id) {
+            if (isSpreadsheetEmpty(s)) {
+              return false; // Purge empty sheet
+            } else {
+              s.ownerId = req.userId; // Reassign non-empty sheet to current admin
+            }
+          }
+          if (Array.isArray(s.sharedWith) && s.sharedWith.includes(id)) {
+            s.sharedWith = s.sharedWith.filter(uid => uid !== id);
+          }
+          return true;
+        });
+      }
+
+      crmData.team = (crmData.team || []).filter(x => x && x.id !== id);
+      await setCrmData(crmData);
     });
-    (crmData.clients || []).forEach(c => { if (c.ownerId === id) c.ownerId = req.userId; });
-    crmData.team = (crmData.team || []).filter(x => x && x.id !== id);
-    await setCrmData(crmData);
     res.json({ ok: true });
   } catch (e) {
+    if (e.message === 'FORBIDDEN_ADMIN') return res.status(403).json({ error: 'Only admins can delete team members.' });
+    if (e.message === 'LAST_ADMIN') return res.status(400).json({ error: 'Cannot delete the last Admin. Promote another member first.' });
     console.error('Delete member error:', e);
     res.status(500).json({ error: e.message });
   }
@@ -3526,28 +3580,41 @@ app.get('/api/mail/inbox', validateSession, async (req, res) => {
       throw new Error(error.message);
     }
 
-    const formatted = (emails || []).map(e => ({
-      id: e.id,
-      messageId: e.message_id,
-      inReplyTo: e.in_reply_to || null,
-      referencesHeader: e.references_header || null,
-      folder: e.folder,
-      fromName: e.from_name || e.from_email,
-      fromEmail: e.from_email,
-      to: e.to_email,
-      cc: e.cc,
-      subject: e.subject,
-      body: e.body,
-      html: e.html,
-      unread: e.unread,
-      attachments: (e.attachments || []).map((a, i) => ({
-        index: i,
-        filename: a.filename,
-        size: a.size || 0,
-        contentType: a.contentType || 'application/octet-stream'
-      })),
-      date: e.created_at
-    }));
+    const crmData = await getCrmData();
+    const member = (crmData.team || []).find(m => m && m.id === req.userId);
+    const memberAddrs = member ? [member.mailboxAddress, ...(member.sharedMailboxes || [])].filter(Boolean).map(a => a.toLowerCase()) : [];
+
+    const formatted = (emails || []).map(e => {
+      let receivedAt = member?.mailboxAddress || '';
+      if (e.to_email) {
+        const toList = String(e.to_email).toLowerCase().split(',').map(s => s.trim());
+        const matchAlias = memberAddrs.find(a => toList.some(t => t.includes(a)));
+        if (matchAlias) receivedAt = matchAlias;
+      }
+      return {
+        id: e.id,
+        messageId: e.message_id,
+        inReplyTo: e.in_reply_to || null,
+        referencesHeader: e.references_header || null,
+        folder: e.folder,
+        fromName: e.from_name || e.from_email,
+        fromEmail: e.from_email,
+        to: e.to_email,
+        receivedAt: receivedAt,
+        cc: e.cc,
+        subject: e.subject,
+        body: e.body,
+        html: e.html,
+        unread: e.unread,
+        attachments: (e.attachments || []).map((a, i) => ({
+          index: i,
+          filename: a.filename,
+          size: a.size || 0,
+          contentType: a.contentType || 'application/octet-stream'
+        })),
+        date: e.created_at
+      };
+    });
 
     mailboxCache.set(cacheKey, formatted);
     res.json({ ok: true, emails: formatted });
@@ -3675,7 +3742,11 @@ app.post('/api/mail/reply', validateSession, async (req, res) => {
       throw new Error('RESEND_MAILBOX_KEY is not configured on the server.');
     }
 
-    const from = member.name ? `"${member.name}" <${member.mailboxAddress}>` : member.mailboxAddress;
+    const allowedFroms = [member.mailboxAddress, ...(member.sharedMailboxes || [])].filter(Boolean).map(a => a.toLowerCase());
+    let requestedFrom = (req.body.fromEmail || req.body.from || '').trim().toLowerCase();
+    const fromAddress = (requestedFrom && allowedFroms.includes(requestedFrom)) ? requestedFrom : member.mailboxAddress;
+
+    const from = member.name ? `"${member.name}" <${fromAddress}>` : fromAddress;
     const toArray = Array.isArray(to) ? to : String(to).split(',').map(s => s.trim());
     const ccArray = cc ? (Array.isArray(cc) ? cc : String(cc).split(',').map(s => s.trim())) : undefined;
 

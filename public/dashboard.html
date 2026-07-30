@@ -8488,6 +8488,19 @@
       margin-left: 6px;
       vertical-align: middle;
     }
+    .mail-alias-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 7px;
+      border-radius: 9999px;
+      background: var(--violet, #7c3aed);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
 
     .mail-reader__actions {
       padding: 12px 24px;
@@ -9990,6 +10003,7 @@
                         <span id="mail-reader-date"></span>
                       </div>
                     </div>
+                    <div id="mail-reader-to-line" style="display:none; align-items:center; gap:6px; margin-top:4px; padding-left:36px;"></div>
                   </div>
                   <div class="mail-reader__body" id="mail-reader-body"></div>
                   <div class="mail-reader__attachments" id="mail-reader-attachments" style="display:none;"></div>
@@ -14257,6 +14271,16 @@
         const snippetLines = snippetSrc.split('\n').filter(l => !/^>/.test(l) && !/^On .+ wrote:/.test(l));
         const snippet = snippetLines.join(' ').trim().substring(0, 60) + (snippetLines.join(' ').trim().length > 60 ? '…' : '');
 
+        // Alias badge: show which shared mailbox received this email
+        const myMailboxAddr = (currentUser() && currentUser().mailboxAddress) ? currentUser().mailboxAddress.toLowerCase() : '';
+        const receivedAt = (m.receivedAt || '').toLowerCase();
+        let aliasBadge = '';
+        if (receivedAt && receivedAt !== myMailboxAddr && _currentMailTab === 'inbox') {
+          const aliasPart = receivedAt.split('@')[0] || '';
+          const aliasLabel = aliasPart.charAt(0).toUpperCase() + aliasPart.slice(1);
+          aliasBadge = `<span class="mail-alias-badge">${aliasLabel}</span>`;
+        }
+
         return `
           <div class="mail-list-item ${activeClass} ${unreadClass}" onclick="mailSelect('${m.folder}','${m.id}')" style="position: relative;">
             <button class="mail-item-kebab" onclick="event.stopPropagation(); window.toggleMailKebabDropdown(event, '${m.id}', '${m.folder}', ${hasUnread})" title="More actions" aria-label="More actions">
@@ -14272,7 +14296,7 @@
                 ${isReply ? '↩ ' : ''}${displaySender}
                 ${count > 1 ? `<span class="mail-thread-count">${count}</span>` : ''}
               </span>
-              <span class="mail-item-date">${dateStr}</span>
+              <span style="display:flex;align-items:center;gap:5px;margin-left:auto;">${aliasBadge}<span class="mail-item-date">${dateStr}</span></span>
             </div>
             <div class="mail-item-subject">${m.subject || '(No Subject)'}</div>
             <div class="mail-item-snippet">${snippet || '(No preview)'}</div>
@@ -14454,6 +14478,21 @@
       document.getElementById('mail-reader-subject').textContent = latestMail.subject || '(No Subject)';
       document.getElementById('mail-reader-from').textContent = `${latestMail.fromName} <${latestMail.fromEmail}>`;
       document.getElementById('mail-reader-date').textContent = new Date(latestMail.date).toLocaleString();
+
+      // Show alias badge + To: line in full reader for shared-mailbox emails
+      const myAddr = (currentUser() && currentUser().mailboxAddress) ? currentUser().mailboxAddress.toLowerCase() : '';
+      const mailReceivedAt = (latestMail.receivedAt || '').toLowerCase();
+      const readerToLine = document.getElementById('mail-reader-to-line');
+      if (readerToLine) {
+        if (mailReceivedAt && mailReceivedAt !== myAddr && latestMail.folder === 'inbox') {
+          const aliasPart = mailReceivedAt.split('@')[0] || '';
+          const aliasLabel = aliasPart.charAt(0).toUpperCase() + aliasPart.slice(1);
+          readerToLine.innerHTML = `<span class="mail-alias-badge" style="font-size:11px;">${aliasLabel}</span> <span style="font-size:12px;color:var(--text-muted);">To: ${latestMail.receivedAt}</span>`;
+          readerToLine.style.display = 'flex';
+        } else {
+          readerToLine.style.display = 'none';
+        }
+      }
 
       const topInitials = (latestMail.fromName || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
       const topAvatarEl = document.getElementById('mail-reader-avatar');
@@ -14828,7 +14867,7 @@
         
         const endpoint = _replyingToMailId ? '/api/mail/reply' : '/api/mail/send';
         const payload = _replyingToMailId 
-          ? { replyToId: _replyingToMailId, to, cc, subject, body, attachments }
+          ? { replyToId: _replyingToMailId, to, cc, subject, body, attachments, ...(_replyFromAlias ? { fromEmail: _replyFromAlias } : {}) }
           : { to, cc, subject, body, attachments };
 
         const r = await fetch(endpoint, {
@@ -14928,12 +14967,20 @@
     }
 
     /* ---- reply ---- */
+    let _replyFromAlias = null; // stores the alias address to reply from when replying to a shared-mailbox email
+
     function mailReply() {
       if (!_selectedMailId) return;
       const mail = _liveMails.find(m => m.id === _selectedMailId && m.folder === _selectedMailFolder);
       if (!mail) return;
       mailOpenCompose();
       _replyingToMailId = mail.id;
+
+      // ── Task 2: Auto-set from-alias for shared mailbox replies ──
+      const myAddr = (currentUser() && currentUser().mailboxAddress) ? currentUser().mailboxAddress.toLowerCase() : '';
+      const rcvAt = (mail.receivedAt || '').toLowerCase();
+      _replyFromAlias = (rcvAt && rcvAt !== myAddr) ? mail.receivedAt : null;
+
       document.getElementById('mail-to').value = mail.fromEmail;
       
       const sub = mail.subject || '';
@@ -21628,6 +21675,39 @@
             c.ownerId = currentUserId;
           }
         });
+
+        // ── Task 1: Spreadsheet cleanup for deleted member ──
+        function isSpreadsheetEmpty(sheet) {
+          if (!sheet || !Array.isArray(sheet.tabs) || sheet.tabs.length === 0) return true;
+          for (const tab of sheet.tabs) {
+            if (!tab || !tab.cells || typeof tab.cells !== 'object') continue;
+            for (const key of Object.keys(tab.cells)) {
+              const cell = tab.cells[key];
+              if (cell === undefined || cell === null) continue;
+              let val = '';
+              if (typeof cell === 'object') {
+                val = String(cell.raw !== undefined ? cell.raw : (cell.formatted !== undefined ? cell.formatted : (cell.v !== undefined ? cell.v : (cell.value !== undefined ? cell.value : '')))).trim();
+              } else {
+                val = String(cell).trim();
+              }
+              if (val !== '') return false;
+            }
+          }
+          return true;
+        }
+        if (Array.isArray(db.spreadsheets)) {
+          db.spreadsheets = db.spreadsheets.filter(s => {
+            if (!s) return false;
+            if (s.ownerId === id) {
+              if (isSpreadsheetEmpty(s)) return false; // delete empty owned sheet
+              s.ownerId = currentUserId; // reassign non-empty owned sheet to admin
+            }
+            if (Array.isArray(s.sharedWith) && s.sharedWith.includes(id)) {
+              s.sharedWith = s.sharedWith.filter(uid => uid !== id);
+            }
+            return true;
+          });
+        }
 
         db.team = db.team.filter(x => x.id !== id);
         renderTeam();
