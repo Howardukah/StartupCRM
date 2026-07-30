@@ -1153,7 +1153,7 @@ app.post('/api/auth/login', async (req, res) => {
         token,
         userId: member.id,
         profileSetupRequired: true,
-        user: { name: member.name || '' }
+        user: { name: member.name || '', personalEmail: member.personalEmail || '' }
       });
     }
     res.json({ ok: true, token, userId: member.id, mustChangePassword: false });

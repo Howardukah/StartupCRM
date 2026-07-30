@@ -1691,7 +1691,12 @@
       if (!panel) return;
       const isHidden = panel.style.display === 'none';
       document.querySelectorAll('.crm-select__panel').forEach(p => p.style.display = 'none');
-      if (isHidden) panel.style.display = 'block';
+      if (isHidden) {
+        panel.style.display = 'block';
+        // Scroll selected option into view and ensure it is visually highlighted
+        const selected = panel.querySelector('.crm-select__option--selected');
+        if (selected) selected.scrollIntoView({ block: 'nearest' });
+      }
     }
 
     function selectCrmSelectOption(csId, value, label) {
@@ -1705,7 +1710,7 @@
       const panel = document.getElementById(csId + '-panel');
       if (panel) {
         panel.querySelectorAll('.crm-select__option').forEach(opt => {
-          opt.classList.toggle('crm-select__option--selected', opt.textContent === label);
+          opt.classList.toggle('crm-select__option--selected', opt.textContent.trim() === label.trim());
         });
         panel.style.display = 'none';
       }
@@ -2055,6 +2060,9 @@
           if (data.user && data.user.name) {
             document.getElementById('newprof-name').value = data.user.name;
           }
+          if (data.user && data.user.personalEmail) {
+            document.getElementById('newprof-pemail').value = data.user.personalEmail;
+          }
           showStep('profile-setup');
           setBtnLoading('btn-signin', false);
           return;
@@ -2096,6 +2104,9 @@
           // Pre-fill name from server-returned user if available
           if (data.user && data.user.name) {
             document.getElementById('newprof-name').value = data.user.name;
+          }
+          if (data.user && data.user.personalEmail) {
+            document.getElementById('newprof-pemail').value = data.user.personalEmail;
           }
           showStep('profile-setup');
           setBtnLoading('btn-newpw', false);
