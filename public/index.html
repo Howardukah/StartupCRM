@@ -1093,7 +1093,8 @@
         <div class="field">
           <label for="setup-password">Password</label>
           <div class="password-wrap">
-            <input id="setup-password" class="input" type="password" placeholder="Choose a password" />
+            <input id="setup-password" class="input" type="password" placeholder="Choose a password"
+              oninput="updatePasswordStrengthUI('setup-password','setup-pw-bar','setup-pw-hint', document.getElementById('setup-name').value.trim(), document.getElementById('setup-email').value.trim())" />
             <button type="button" class="toggle-pw" data-pw-toggle-for="setup-password">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -1101,6 +1102,10 @@
               </svg>
             </button>
           </div>
+          <div style="height:3px;background:rgba(255,255,255,0.08);border-radius:2px;margin-top:6px;overflow:hidden;">
+            <div id="setup-pw-bar" style="height:100%;width:0%;border-radius:2px;transition:width 0.25s,background 0.25s;"></div>
+          </div>
+          <p id="setup-pw-hint" style="font-size:11px;margin:3px 0 0;min-height:14px;"></p>
         </div>
         <div class="field">
           <label for="setup-password2">Confirm password</label>
@@ -1180,7 +1185,8 @@
         <div class="field">
           <label for="newpw-1">New password</label>
           <div class="password-wrap">
-            <input id="newpw-1" class="input" type="password" placeholder="New password" />
+            <input id="newpw-1" class="input" type="password" placeholder="New password"
+              oninput="updatePasswordStrengthUI('newpw-1','newpw-bar','newpw-hint',null,null)" />
             <button type="button" class="toggle-pw" data-pw-toggle-for="newpw-1">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -1188,6 +1194,10 @@
               </svg>
             </button>
           </div>
+          <div style="height:3px;background:rgba(255,255,255,0.08);border-radius:2px;margin-top:6px;overflow:hidden;">
+            <div id="newpw-bar" style="height:100%;width:0%;border-radius:2px;transition:width 0.25s,background 0.25s;"></div>
+          </div>
+          <p id="newpw-hint" style="font-size:11px;margin:3px 0 0;min-height:14px;"></p>
         </div>
         <div class="field">
           <label for="newpw-2">Confirm new password</label>
@@ -1966,6 +1976,55 @@
     /* ============ AUTHENTICATION ============ */
     function getMember(id) { return ((db && db.team) || []).find(m => m.id === id); }
 
+    /* ── Client-side password strength (mirrors server isPasswordStrong) ── */
+    function clientPasswordStrong(password, name, email) {
+      if (!password || password.length < 8) return 'Password must be at least 8 characters.';
+      if (!/[a-z]/.test(password)) return 'Password must include a lowercase letter.';
+      if (!/[A-Z]/.test(password)) return 'Password must include an uppercase letter.';
+      if (!/[0-9]/.test(password)) return 'Password must include a number.';
+      if (!/[^a-zA-Z0-9]/.test(password)) return 'Password must include a special character.';
+      if (/^\d+$/.test(password) && /^(0123456789|1234567890|9876543210|0987654321)/.test(password)) {
+        return 'Password cannot be a simple numeric sequence.';
+      }
+      if (name) {
+        const lowerPw = password.toLowerCase();
+        const nameParts = String(name).toLowerCase().split(/\s+/).filter(Boolean);
+        if (nameParts.some(p => p.length > 2 && lowerPw.includes(p))) return 'Password cannot contain your name.';
+      }
+      if (email) {
+        const lowerPw = password.toLowerCase();
+        const emailLocal = String(email).toLowerCase().split('@')[0];
+        if (emailLocal.length > 2 && lowerPw.includes(emailLocal)) return 'Password cannot contain your email/username.';
+      }
+      return null;
+    }
+
+    /* Renders a small strength bar + hint below the given input */
+    function updatePasswordStrengthUI(inputId, barId, hintId, name, email) {
+      const input = document.getElementById(inputId);
+      const bar   = document.getElementById(barId);
+      const hint  = document.getElementById(hintId);
+      if (!input || !bar || !hint) return;
+      const pw = input.value;
+      if (!pw) { bar.style.width = '0%'; bar.style.background = ''; hint.textContent = ''; return; }
+      const err = clientPasswordStrong(pw, name, email);
+      if (err) {
+        // compute partial score for visual (0-4 criteria)
+        let score = 0;
+        if (pw.length >= 8) score++;
+        if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+        if (/[0-9]/.test(pw)) score++;
+        if (/[^a-zA-Z0-9]/.test(pw)) score++;
+        const pct = Math.max(10, score * 25);
+        const colour = score <= 1 ? '#ef4444' : score === 2 ? '#f97316' : '#eab308';
+        bar.style.width = pct + '%'; bar.style.background = colour;
+        hint.textContent = err; hint.style.color = colour;
+      } else {
+        bar.style.width = '100%'; bar.style.background = '#22c55e';
+        hint.textContent = '✓ Strong password'; hint.style.color = '#22c55e';
+      }
+    }
+
     async function submitFirstAdmin() {
       const name = document.getElementById('setup-name').value.trim();
       const email = document.getElementById('setup-email').value.trim();
@@ -1974,7 +2033,8 @@
       const err = document.getElementById('setup-error');
       err.textContent = '';
       if (!name || !email) { showFormError('setup-error', 'Name and email are required.'); return; }
-      if (!pw || pw.length < 4) { showFormError('setup-error', 'Password must be at least 4 characters.'); return; }
+      const pwStrErr = clientPasswordStrong(pw, name, email);
+      if (pwStrErr) { showFormError('setup-error', pwStrErr); return; }
       if (pw !== pw2) { showFormError('setup-error', 'Passwords do not match.'); return; }
       const member = { id: uid('mem'), name, email, role: 'Admin', status: 'Active', avatar: 'avatar-1', initials: initialsOf(name), added: now(), password: pw, mustChangePassword: false, profileSetupRequired: true };
       const initialDB = structuredClone(EMPTY_DB);
@@ -2102,7 +2162,8 @@
       const pw2 = document.getElementById('newpw-2').value;
       const err = document.getElementById('newpw-error');
       err.textContent = '';
-      if (!pw || pw.length < 8) { showFormError('newpw-error', 'Password must be at least 8 characters.'); return; }
+      const pwStrErr = clientPasswordStrong(pw, null, null);
+      if (pwStrErr) { showFormError('newpw-error', pwStrErr); return; }
       if (pw === '0000') { showFormError('newpw-error', 'Choose something other than the default.'); return; }
       if (pw !== pw2) { showFormError('newpw-error', 'Passwords do not match.'); return; }
       setBtnLoading('btn-newpw', true);

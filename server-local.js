@@ -97,9 +97,31 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/change-password', async (req, res) => {
   const { userId, newPassword } = req.body;
   if (!userId) return res.status(400).json({ error: 'Session expired.' });
-  if (!newPassword || String(newPassword).length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
   const member = (_db.team || []).find(m => m.id === userId);
   if (!member) return res.status(400).json({ error: 'User not found.' });
+
+  // Enforce password complexity — same rules as the main server
+  function isPasswordStrong(password, mbr) {
+    if (!password || password.length < 8) return 'Password must be at least 8 characters.';
+    if (!/[a-z]/.test(password)) return 'Password must include a lowercase letter.';
+    if (!/[A-Z]/.test(password)) return 'Password must include an uppercase letter.';
+    if (!/[0-9]/.test(password)) return 'Password must include a number.';
+    if (!/[^a-zA-Z0-9]/.test(password)) return 'Password must include a special character.';
+    if (/^\d+$/.test(password) && /^(0123456789|1234567890|9876543210|0987654321)/.test(password)) {
+      return 'Password cannot be a simple numeric sequence.';
+    }
+    if (mbr) {
+      const lowerPw = password.toLowerCase();
+      const nameParts = String(mbr.name || '').toLowerCase().split(/\s+/).filter(Boolean);
+      const emailLocal = String(mbr.email || mbr.id || '').toLowerCase().split('@')[0];
+      if (nameParts.some(p => p.length > 2 && lowerPw.includes(p))) return 'Password cannot contain your name.';
+      if (emailLocal.length > 2 && lowerPw.includes(emailLocal)) return 'Password cannot contain your email/username.';
+    }
+    return null;
+  }
+  const pwError = isPasswordStrong(String(newPassword || ''), member);
+  if (pwError) return res.status(400).json({ error: pwError });
+
   const bcrypt = await import('bcryptjs');
   member.password = await bcrypt.default.hash(newPassword, 10);
   member.mustChangePassword = false;

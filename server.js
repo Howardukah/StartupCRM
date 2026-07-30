@@ -715,6 +715,34 @@ function safeFilename(name) {
 }
 
 
+/* ── Password strength validation ──────────────────────────────────────────
+   Returns null if the password meets all requirements, or an error string.
+   Pass `member` to also reject passwords that contain the user's own name or
+   email/username.  Server-side is the authoritative check; client-side mirrors
+   the same rules for instant feedback.
+─────────────────────────────────────────────────────────────────────────── */
+function isPasswordStrong(password, member) {
+  if (!password || password.length < 8) return 'Password must be at least 8 characters.';
+  if (!/[a-z]/.test(password)) return 'Password must include a lowercase letter.';
+  if (!/[A-Z]/.test(password)) return 'Password must include an uppercase letter.';
+  if (!/[0-9]/.test(password)) return 'Password must include a number.';
+  if (!/[^a-zA-Z0-9]/.test(password)) return 'Password must include a special character.';
+  if (/^\d+$/.test(password) && /^(0123456789|1234567890|9876543210|0987654321)/.test(password)) {
+    return 'Password cannot be a simple numeric sequence.';
+  }
+  if (member) {
+    const lowerPw = password.toLowerCase();
+    const nameParts = String(member.name || '').toLowerCase().split(/\s+/).filter(Boolean);
+    const emailLocal = String(member.email || member.id || '').toLowerCase().split('@')[0];
+    if (nameParts.some(p => p.length > 2 && lowerPw.includes(p))) {
+      return 'Password cannot contain your name.';
+    }
+    if (emailLocal.length > 2 && lowerPw.includes(emailLocal)) {
+      return 'Password cannot contain your email/username.';
+    }
+  }
+  return null; // null = passes
+}
 
 /* ────────────────────────────────────────────────────────────────────────────────────────────────────────── 
    AUTH ROUTES
@@ -744,10 +772,18 @@ app.post('/api/auth/setup', async (req, res) => {
       return res.status(400).json({ error: 'Workspace already set up.' });
     }
     const adminMember = req.body.team && req.body.team[0];
-    if (adminMember) {
-      adminMember.profileSetupRequired = true;
-      adminMember.lastLoginIp = requestIp(req);
-    }
+    if (!adminMember) return res.status(400).json({ error: 'Admin member data is required.' });
+
+    // Enforce password complexity before writing any data.
+    // adminMember.password is still plaintext at this point — hashPlaintextPasswords
+    // runs inside setCrmData, so we validate the raw value here.
+    const rawPassword = adminMember.password;
+    const pwError = isPasswordStrong(rawPassword, adminMember);
+    if (pwError) return res.status(400).json({ error: pwError });
+
+    adminMember.profileSetupRequired = true;
+    adminMember.lastLoginIp = requestIp(req);
+
     await setCrmData(req.body);
     const token = signToken(adminMember.id, Date.now() + 86400000, true);
     res.json({ ok: true, token, userId: adminMember.id, profileSetupRequired: true });
@@ -1323,8 +1359,9 @@ app.post('/api/auth/change-password', async (req, res) => {
     if (!userId) {
       return res.status(400).json({ error: 'Session expired. Please refresh the page and log in again.' });
     }
-    if (!newPassword || String(newPassword).length < 8) {
-      return res.status(400).json({ error: 'Your new password must be at least 8 characters long.' });
+    // Basic presence check before hitting the DB; full complexity check comes after member lookup
+    if (!newPassword) {
+      return res.status(400).json({ error: 'New password is required.' });
     }
 
     // Allow if caller has a valid session for THIS user, or if it's a
@@ -1348,6 +1385,10 @@ app.post('/api/auth/change-password', async (req, res) => {
     if (!sessionOwnsUser && !isMustChangeFlow) {
       return res.status(401).json({ error: 'Unauthorized.' });
     }
+
+    // Full password complexity check — run after member is loaded so name/email rules apply
+    const pwError = isPasswordStrong(String(newPassword), member);
+    if (pwError) return res.status(400).json({ error: pwError });
 
     data.team[memberIndex].password = newPassword; // setCrmData will hash it
     data.team[memberIndex].mustChangePassword = false;
