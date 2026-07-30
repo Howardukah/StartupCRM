@@ -22247,9 +22247,71 @@
       return d;
     }
 
-    // Sprint meeting auto-generation is DISABLED — meetings must be scheduled manually.
-    function syncSprintMeetings(p) { /* no-op — auto sprint meetings disabled */ }
-    function autoCreateSprintMeetings(p, sprintIdx) { /* no-op — auto sprint meetings disabled */ }
+    function syncSprintMeetings(p) {
+      if (!p || !Array.isArray(p.sprints)) return;
+      const attendees = getProjectTeamIds(p.id);
+      const generatedTitles = [];
+
+      function upsertMeeting(title, dt) {
+        generatedTitles.push(title);
+        const meetingDt = new Date(dt);
+        meetingDt.setHours(10, 0, 0, 0);
+        const existing = db.meetings.find(m => m.projectId === p.id && m.title === title);
+        if (existing) {
+          const oldTime = existing.datetime;
+          existing.datetime = meetingDt.toISOString();
+          existing.attendees = attendees;
+          existing.clientId = p.clientId;
+          existing.status = 'Scheduled';
+          if (oldTime !== existing.datetime) {
+            const txt = `Meeting updated: <b>${title}</b> for project <b>${p.name}</b> rescheduled to ${meetingDt.toLocaleString()}`;
+            attendees.forEach(mid => { if (mid !== currentUserId) addNotification(mid, txt, p.id); });
+          }
+        } else {
+          db.meetings.push({ id: uid('mtg'), title, clientId: p.clientId, projectId: p.id, datetime: meetingDt.toISOString(), attendees, status: 'Scheduled' });
+          const txt = `New meeting scheduled: <b>${title}</b> for project <b>${p.name}</b> on ${meetingDt.toLocaleString()}`;
+          attendees.forEach(mid => { if (mid !== currentUserId) addNotification(mid, txt, p.id); });
+        }
+      }
+
+      p.sprints.forEach((s, idx) => {
+        // ── Kickoff: 1 day after sprint start ──
+        const startDate = parseSprintStartDate(s.range);
+        if (startDate) {
+          const kickoffDt = new Date(startDate);
+          kickoffDt.setDate(kickoffDt.getDate() + 1);
+          const kickoffTitle = '🚀 Kickoff: ' + s.name;
+          upsertMeeting(kickoffTitle, kickoffDt);
+        }
+
+        // ── Handoff: at end of this sprint / start of next ──
+        if (idx < p.sprints.length - 1) {
+          const endDate = parseSprintEndDate(s.range);
+          if (endDate) {
+            const next = p.sprints[idx + 1];
+            const handoffTitle = 'Sprint Handoff: ' + s.name + ' → ' + next.name;
+            upsertMeeting(handoffTitle, endDate);
+          }
+        }
+      });
+
+      // Remove stale auto-generated meetings no longer in the plan
+      db.meetings = db.meetings.filter(m => {
+        if (m.projectId !== p.id) return true;
+        if (m.title && (m.title.startsWith('🚀 Kickoff:') || m.title.startsWith('Sprint Handoff:'))) {
+          return generatedTitles.includes(m.title);
+        }
+        // Legacy S1toS2 format
+        if (/^S\d+toS\d+ meeting$/.test(m.title)) {
+          return false;
+        }
+        return true;
+      });
+    }
+
+    function autoCreateSprintMeetings(p, sprintIdx) {
+      syncSprintMeetings(p);
+    }
 
     function openSprintModal(pid, sid) {
       if (!canEditProject(pid)) return;
