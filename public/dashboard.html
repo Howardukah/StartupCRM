@@ -11295,6 +11295,9 @@
       if (!token) return;
       if (!_socket) {
         _socket = io({ auth: { token } });
+        _socket.on('reconnect', () => {
+          if (typeof recoverConnection === 'function') recoverConnection();
+        });
         _socket.on('db_changed', (data) => {
           window._lastAssetCountsStr = '';
           if (typeof window.refreshProjectAssetCounts === 'function') {
@@ -11374,23 +11377,6 @@
       if (!event.persisted) return;
       startPolling();
       if (typeof reloadDBFromDisk === 'function') reloadDBFromDisk();
-    });
-
-    // Auto-reconnect WebSockets and sync live data when network connectivity is restored
-    window.addEventListener('online', async () => {
-      if (_socket) {
-        if (!_socket.connected) _socket.connect();
-      } else {
-        startPolling();
-      }
-      if (typeof markQueuedChatMessagesDelivered === 'function') markQueuedChatMessagesDelivered();
-      if (typeof queueSave === 'function') queueSave(0);
-      if (typeof reloadDBFromDisk === 'function') await reloadDBFromDisk();
-      if (typeof showToast === 'function') showToast('Network restored. Reconnected & queued messages sent!', 'success');
-    });
-
-    window.addEventListener('offline', () => {
-      if (typeof showToast === 'function') showToast('You are offline. Changes will be queued locally.', 'warn');
     });
 
     function showPage(name) {
@@ -11842,6 +11828,10 @@
     // Guard against concurrent deletes of the same entity (race condition protection)
     const _deletingIds = new Set();
 
+    let _recoveringConnection = false;
+    let _recoveryRetryTimer = null;
+    let _recoveryAttempts = 0;
+
     function isNetworkError(error) {
       if (navigator.onLine === false) return true;
       return error instanceof TypeError && /network|fetch|load failed/i.test(error.message || '');
@@ -11856,19 +11846,102 @@
 
     window.addEventListener('offline', showNoInternetConnection);
     window.addEventListener('online', () => {
-      if (db) queueSave(0);
+      if (typeof recoverConnection === 'function') recoverConnection();
     });
 
-    function markQueuedChatMessagesDelivered() {
-      let changed = false;
-      (db.messages || []).forEach(message => {
-        if (message.deliveryStatus === 'queued') {
-          message.deliveryStatus = 'delivered';
-          changed = true;
+    async function recoverConnection() {
+      if (_recoveringConnection) return;
+      _recoveringConnection = true;
+
+      if (typeof _setSaveIndicator === 'function') {
+        _setSaveIndicator('reconnecting');
+      }
+
+      try {
+        if (_socket) {
+          if (!_socket.connected) _socket.connect();
+        } else if (typeof startPolling === 'function') {
+          startPolling();
         }
-      });
-      if (changed && _activeMailView === 'chat') renderChat();
-      return changed;
+
+        if (typeof reloadDBFromDisk === 'function') {
+          await reloadDBFromDisk();
+        }
+
+        if (typeof markQueuedChatMessagesDelivered === 'function') {
+          await markQueuedChatMessagesDelivered();
+        }
+
+        if (typeof queueSave === 'function' && typeof db !== 'undefined' && db) {
+          queueSave(0);
+        }
+
+        _recoveryAttempts = 0;
+        _recoveringConnection = false;
+        clearTimeout(_recoveryRetryTimer);
+        _recoveryRetryTimer = null;
+
+        if (typeof _setSaveIndicator === 'function') {
+          _setSaveIndicator('saved');
+        }
+
+        if (typeof showToast === 'function') {
+          showToast('Network restored.', 'success');
+        }
+      } catch (err) {
+        _recoveringConnection = false;
+        _recoveryAttempts++;
+
+        if (_recoveryAttempts <= 3 && navigator.onLine) {
+          clearTimeout(_recoveryRetryTimer);
+          _recoveryRetryTimer = setTimeout(() => {
+            recoverConnection();
+          }, 5000);
+        } else {
+          _recoveryAttempts = 0;
+          if (typeof _setSaveIndicator === 'function') {
+            _setSaveIndicator('offline');
+          }
+          if (typeof showNoInternetConnection === 'function') {
+            showNoInternetConnection();
+          }
+        }
+      }
+    }
+
+    async function markQueuedChatMessagesDelivered() {
+      if (!db || !Array.isArray(db.messages)) return false;
+      const queuedMessages = db.messages
+        .filter(m => m && m.deliveryStatus === 'queued')
+        .sort((a, b) => new Date(a.timestamp || a.created || 0) - new Date(b.timestamp || b.created || 0));
+
+      if (!queuedMessages.length) return false;
+
+      let anyDelivered = false;
+      const token = sessionStorage.getItem('crm-session-token');
+
+      for (const message of queuedMessages) {
+        try {
+          const res = await fetch(API_BASE + '/api/chat/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-session-token': token || '' },
+            body: JSON.stringify({ message })
+          });
+          if (!res.ok) throw new Error('Send failed');
+          message.deliveryStatus = 'delivered';
+          anyDelivered = true;
+        } catch (err) {
+          message.deliveryStatus = 'queued';
+        }
+      }
+
+      if (anyDelivered) {
+        cacheDbLocally();
+        if (typeof _activeMailView !== 'undefined' && _activeMailView === 'chat' && typeof renderChat === 'function') {
+          renderChat();
+        }
+      }
+      return anyDelivered;
     }
 
     function queueSave(delayMs) {
@@ -11917,7 +11990,7 @@
             _setSaveIndicator('saving');
             try {
               await _doSave();
-              if (markQueuedChatMessagesDelivered()) _savePending = true;
+              if (await markQueuedChatMessagesDelivered()) _savePending = true;
             } catch (e) {
               saveError = e;
               _setSaveIndicator(isNetworkError(e) ? 'offline' : 'error');
@@ -11981,10 +12054,13 @@
       const txt = document.getElementById('save-indicator-text');
       const dot = ind && ind.querySelector('.save-indicator__dot');
       if (!ind || !txt) return;
-      ind.classList.toggle('is-saving', state === 'saving');
+      ind.classList.toggle('is-saving', state === 'saving' || state === 'reconnecting');
       if (state === 'saving') {
         txt.textContent = 'Saving...';
         if (dot) dot.style.background = '';
+      } else if (state === 'reconnecting') {
+        txt.textContent = 'Reconnecting...';
+        if (dot) dot.style.background = 'var(--amber)';
       } else if (state === 'saved') {
         txt.textContent = 'Saved';
         if (dot) dot.style.background = '';
