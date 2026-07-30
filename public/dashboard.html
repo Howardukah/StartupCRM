@@ -10698,7 +10698,7 @@
   <div class="modal" id="modal-project">
     <div class="modal__panel">
       <div class="modal__head">
-        <div class="modal__title">New project</div><button class="modal__close" data-modal-close="">✕</button>
+        <div class="modal__title" id="modal-project-title">New project</div><button class="modal__close" data-modal-close="">✕</button>
       </div>
       <div class="modal__body" style="display:flex;flex-direction:column;gap:0">
         <div class="field" style="flex:1;display:flex;flex-direction:column;justify-content:space-around"><label class="field__label">Project name</label><input class="field__input p-name" placeholder="e.g. Website redesign" oninput="saveCurrentProjectDraft(); updateCreateBucketButtonState();"></div>
@@ -10730,7 +10730,7 @@
         </div>
         <div class="field" style="flex:1;display:flex;flex-direction:column;justify-content:space-around"><label class="field__label">Meeting link</label><input class="field__input p-zoho-meeting" type="url" placeholder="https://..." required="" oninput="saveCurrentProjectDraft()"></div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" data-modal-close="">Cancel</button><button class="btn btn--primary" onclick="addProject()">Create project</button></div>
+      <div class="modal__foot"><button class="btn btn--ghost" data-modal-close="">Cancel</button><button class="btn btn--primary" id="modal-project-submit-btn" onclick="addProject()">Create project</button></div>
     </div>
   </div>
 
@@ -20536,6 +20536,10 @@
       editingProjectId = null;
       populateDropdowns();
       const m = document.getElementById('modal-project');
+      const titleEl = document.getElementById('modal-project-title');
+      const submitBtn = document.getElementById('modal-project-submit-btn');
+      if (titleEl) titleEl.textContent = 'New project';
+      if (submitBtn) submitBtn.textContent = 'Create project';
       m.dataset.projectId = uid('proj');
       delete m.dataset.previousClientId;
       delete m.dataset.bucketId;
@@ -22022,6 +22026,10 @@
       if (!proj) return;
       if (isProjectPaused(proj)) { showToast('This project is paused and cannot be edited.', 'error'); return; }
       editingProjectId = id;
+      const titleEl = document.getElementById('modal-project-title');
+      const submitBtn = document.getElementById('modal-project-submit-btn');
+      if (titleEl) titleEl.textContent = 'Edit project';
+      if (submitBtn) submitBtn.textContent = 'Save changes';
       m.dataset.projectId = id;
       m.querySelector('.p-name').value = proj.name;
       m.querySelector('.p-name').removeAttribute('readonly');
