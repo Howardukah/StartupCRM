@@ -1354,6 +1354,49 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  // ── Network Reconnect & Recovery ──
+  let _recoveringConnection = false;
+  let _recoveryRetryTimer = null;
+  let _recoveryAttempts = 0;
+
+  async function recoverConnection() {
+    if (_recoveringConnection) return;
+    _recoveringConnection = true;
+
+    try {
+      if (activeProjectId && typeof loadProjectAssets === 'function') {
+        await loadProjectAssets(activeProjectId, activeNameEl ? activeNameEl.textContent : '', true);
+      } else if (typeof loadProjects === 'function') {
+        await loadProjects();
+      }
+
+      _recoveryAttempts = 0;
+      _recoveringConnection = false;
+      clearTimeout(_recoveryRetryTimer);
+      _recoveryRetryTimer = null;
+
+      showSlideNotification('Network restored', 'Your connection has been restored.', 'success');
+    } catch (err) {
+      _recoveringConnection = false;
+      _recoveryAttempts++;
+
+      if (_recoveryAttempts <= 3 && navigator.onLine) {
+        clearTimeout(_recoveryRetryTimer);
+        _recoveryRetryTimer = setTimeout(() => {
+          recoverConnection();
+        }, 5000);
+      } else {
+        _recoveryAttempts = 0;
+        showSlideNotification('No internet connection', 'Check your connection and try again.', 'info');
+      }
+    }
+  }
+
+  window.addEventListener('online', () => recoverConnection());
+  window.addEventListener('offline', () => {
+    showSlideNotification('No internet connection', 'Check your connection and try again.', 'info');
+  });
+
 })();
 
   (function () {

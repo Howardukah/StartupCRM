@@ -1863,6 +1863,54 @@ input[type=file]{display:none}
     }, 4000);
   }
 
+  // ── Network Reconnect & Recovery ──
+  let _recoveringConnection = false;
+  let _recoveryRetryTimer = null;
+  let _recoveryAttempts = 0;
+
+  async function recoverConnection() {
+    if (_recoveringConnection) return;
+    _recoveringConnection = true;
+
+    try {
+      if (typeof validateToken === 'function' && typeof bucketToken !== 'undefined' && bucketToken) {
+        const alreadyAuthed = sessionStorage.getItem('bucket-authed-' + bucketToken) === '1';
+        await validateToken(alreadyAuthed);
+      }
+
+      _recoveryAttempts = 0;
+      _recoveringConnection = false;
+      clearTimeout(_recoveryRetryTimer);
+      _recoveryRetryTimer = null;
+
+      if (typeof showToast === 'function') {
+        showToast('Network restored.', 'success');
+      }
+    } catch (err) {
+      _recoveringConnection = false;
+      _recoveryAttempts++;
+
+      if (_recoveryAttempts <= 3 && navigator.onLine) {
+        clearTimeout(_recoveryRetryTimer);
+        _recoveryRetryTimer = setTimeout(() => {
+          recoverConnection();
+        }, 5000);
+      } else {
+        _recoveryAttempts = 0;
+        if (typeof showToast === 'function') {
+          showToast('No internet connection. Please check your network.', 'warn');
+        }
+      }
+    }
+  }
+
+  window.addEventListener('online', () => recoverConnection());
+  window.addEventListener('offline', () => {
+    if (typeof showToast === 'function') {
+      showToast('You are offline. Please check your connection.', 'warn');
+    }
+  });
+
   // ── Helpers ──────────────────────────────────────────────────────────────
   function fmtBytes(b) {
     b = parseInt(b||0);
