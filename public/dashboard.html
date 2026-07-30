@@ -17758,7 +17758,7 @@
         (showSensitive && p.previewUrl ? '<a href="' + p.previewUrl + '" target="_blank" rel="noopener" class="ph-link" style="color:var(--blue)">🔗 Preview</a>' : '') +
         (showSensitive && p.assetUrl ? '<a href="/storage.html?project=' + p.id + '" target="_blank" rel="noopener" class="ph-link" style="color:var(--violet)" onclick="(function(){try{var t=sessionStorage.getItem(\'crm-session-token\')||localStorage.getItem(\'crm-session-token\');var u=sessionStorage.getItem(\'crm-current-user\')||localStorage.getItem(\'crm-current-user\');if(t)localStorage.setItem(\'crm-session-token\',t);if(u)localStorage.setItem(\'crm-current-user\',u);}catch(e){}})()">📁 Assets</a>' +
           (isAdmin() ? '<button onclick="navigator.clipboard.writeText(\'' + p.assetUrl + '\'); showToast(\'Client upload link copied!\', \'success\')" class="ph-link ph-copy">Copy Client Link</button>' : '') : '') +
-        (showSensitive && p.zohoMeetingLink ? '<a href="' + p.zohoMeetingLink + '" target="_blank" rel="noopener" class="ph-link" style="color:var(--accent)">📞 Meeting Link</a>' : '') +
+        (showSensitive && p.zohoMeetingLink ? '<a href="' + p.zohoMeetingLink + '" target="_blank" rel="noopener" class="ph-link" style="color:var(--accent)"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:inline-block;vertical-align:-2px;margin-right:4px"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>Meeting Link</a>' : '') +
         '</span></span></h1><div class="page-head__sub">' + (cl ? cl.name : '—') + ' · Due ' + p.due + (isAdmin() && p.contactEmail ? ' · <span title="Client contact (admin only)">' + p.contactEmail + '</span>' : '') + '</div></div>' +
         '<div class="page-head__actions">' + lifecycleBtn +
         ('<div class="' + (canEdit ? '' : 'hidden') + '" style="display:flex;gap:8px;align-items:center">' + addTeamBtn +
@@ -20291,14 +20291,24 @@
     }
 
     function meetingProjectChanged(sel) {
-      const nameInput = sel.closest('.modal__body').querySelector('.m-client-name');
-      const emailInput = sel.closest('.modal__body').querySelector('.m-client-email');
+      const modalBody = sel.closest('.modal__body');
+      if (!modalBody) return;
+      const nameInput = modalBody.querySelector('.m-client-name');
+      const emailInput = modalBody.querySelector('.m-client-email');
+      const linkInput = modalBody.querySelector('.m-zoho-meeting');
       const pid = sel.value;
-      if (!pid) { nameInput.value = ''; emailInput.value = ''; return; }
+      if (!pid) {
+        if (nameInput) nameInput.value = '';
+        if (emailInput) emailInput.value = '';
+        return;
+      }
       const p = getProject(pid);
       const cl = p ? getClient(p.clientId) : null;
-      nameInput.value = cl ? cl.name : '—';
-      emailInput.value = cl ? (cl.email || '—') : '—';
+      if (nameInput) nameInput.value = cl ? cl.name : '—';
+      if (emailInput) emailInput.value = cl ? (cl.email || '—') : '—';
+      if (linkInput && p && p.zohoMeetingLink && (!editingMeetingId || !linkInput.value)) {
+        linkInput.value = p.zohoMeetingLink;
+      }
     }
 
     /* ============ NEW PROJECT PER-CLIENT DRAFT SYSTEM ============ */
@@ -22406,13 +22416,19 @@
       if (!popover) return;
       const clNameEl = popover.querySelector('.m-pop-client-name');
       const clEmailEl = popover.querySelector('.m-pop-client-email');
+      const linkEl = popover.querySelector('.m-pop-link');
       const p = getProject(pid);
-      if (p && p.clientId) {
-        const c = getClient(p.clientId);
-        if (c) {
-          if (clNameEl) clNameEl.value = c.name || '';
-          if (clEmailEl) clEmailEl.value = c.email || '';
-          return;
+      if (p) {
+        if (linkEl && p.zohoMeetingLink) {
+          linkEl.value = p.zohoMeetingLink;
+        }
+        if (p.clientId) {
+          const c = getClient(p.clientId);
+          if (c) {
+            if (clNameEl) clNameEl.value = c.name || '';
+            if (clEmailEl) clEmailEl.value = c.email || '';
+            return;
+          }
         }
       }
       if (clNameEl) clNameEl.value = '';
