@@ -22311,7 +22311,7 @@
       m.querySelector('.modal__title').textContent = 'New sprint';
       m.querySelector('.btn--primary').textContent = 'Create sprint';
       m.classList.remove('is-open');
-      persistAndRender([() => renderProjectDetail(currentProjectId), renderProjects, renderMeetings, renderOverview], { save: false });
+      persistAndRender([() => renderProjectDetail(currentProjectId), renderProjects, renderMeetings, renderOverview]);
     }
 
     async function deleteSprint(pid, sid) {
@@ -22326,7 +22326,7 @@
         await apiFetch('/api/projects/' + pid + '/sprints/' + sid, { method: 'DELETE' });
         p.sprints = p.sprints.filter(x => x.id !== sid);
         syncSprintMeetings(p);
-        persistAndRender([() => renderProjectDetail(pid), renderProjects, renderMeetings, renderOverview], { save: false });
+        persistAndRender([() => renderProjectDetail(pid), renderProjects, renderMeetings, renderOverview]);
       } catch (err) {
         showToast('Could not delete sprint: ' + err.message, 'error');
       } finally {
