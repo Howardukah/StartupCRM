@@ -1738,12 +1738,27 @@
       d.textContent = str == null ? '' : String(str);
       return d.innerHTML;
     }
+    const BTN_INPUT_MAPPING = {
+      'btn-signin': ['signin-user', 'signin-password'],
+      'btn-setup': ['setup-name', 'setup-email', 'setup-password', 'setup-password2'],
+      'btn-newpw': ['newpw-1', 'newpw-2'],
+      'btn-newprof': ['newprof-name', 'newprof-birthday', 'newprof-pemail', 'newprof-mobile', 'newprof-security-answer'],
+      'btn-challenge': ['challenge-security-answer'],
+    };
+
     function setBtnLoading(id, loading) {
       const btn = document.getElementById(id);
       if (!btn) return;
       btn.classList.toggle('btn-loading', loading);
       btn.disabled = !!loading;
       btn.setAttribute('aria-busy', loading ? 'true' : 'false');
+
+      const inputsToLock = BTN_INPUT_MAPPING[id] || [];
+      inputsToLock.forEach(inputId => {
+        const inp = document.getElementById(inputId);
+        if (inp) inp.disabled = !!loading;
+      });
+
       // Lock/unlock the Change-email and Forgot-password links during sign-in
       if (id === 'btn-signin') {
         ['signin-change-email', 'signin-forgot-pw'].forEach(linkId => {

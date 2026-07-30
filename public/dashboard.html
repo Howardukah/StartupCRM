@@ -21940,6 +21940,11 @@
         return;
       }
 
+      const nameInp = m.querySelector('.p-name');
+      const clientSel = m.querySelector('.p-client');
+      const emailInp = m.querySelector('.p-contact-email');
+      [nameInp, clientSel, emailInp].forEach(el => { if (el) el.disabled = true; });
+
       if (btn) { btn.disabled = true; btn.textContent = 'Creating...'; }
 
       try {
@@ -22034,6 +22039,14 @@
       } catch (err) {
         showToast('Could not create asset bucket: ' + err.message, 'error');
         if (btn) { btn.disabled = false; btn.textContent = '+ Create Asset Bucket'; }
+      } finally {
+        const m = document.getElementById('modal-project');
+        if (m) {
+          const nameInp = m.querySelector('.p-name');
+          const clientSel = m.querySelector('.p-client');
+          const emailInp = m.querySelector('.p-contact-email');
+          [nameInp, clientSel, emailInp].forEach(el => { if (el) el.disabled = false; });
+        }
       }
     }
 

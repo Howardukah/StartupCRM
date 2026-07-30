@@ -37,6 +37,7 @@
   --accent-bright: #2FD6E4;
   --green: #12A45C;
   --amber: #D08700;
+  --warn: #f59e0b;
   --red: #D63B3B;
   --radius: 10px;
   --radius-sm: 6px;
@@ -552,6 +553,108 @@ input[type=file]{display:none}
 .empty-icon{font-size:44px;margin-bottom:14px}
 .empty h3{font-size:15px;margin-bottom:6px}
 .empty p{font-size:12.5px}
+
+/* ── Slide Toast ──────────────────────────────────────────────────────── */
+.slide-toast-container {
+  position: fixed;
+  top: 80px;
+  right: 24px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.slide-toast {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.15), 0 8px 12px -6px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  padding: 14px 18px;
+  width: 340px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  pointer-events: auto;
+  transform: translateX(400px);
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s;
+  opacity: 0;
+}
+
+.slide-toast.show {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.slide-toast__icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.slide-toast--chat .slide-toast__icon-wrap {
+  background: rgba(18, 163, 180, 0.12);
+  color: var(--accent);
+}
+
+.slide-toast--mail .slide-toast__icon-wrap {
+  background: rgba(139, 92, 246, 0.12);
+  color: #8b5cf6;
+}
+
+.slide-toast--info .slide-toast__icon-wrap {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--green);
+}
+
+.slide-toast--warn .slide-toast__icon-wrap {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--warn, #f59e0b);
+}
+
+.slide-toast__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.slide-toast__title {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.slide-toast__desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.slide-toast__close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px;
+  border-radius: 4px;
+  margin-top: -2px;
+  margin-right: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slide-toast__close:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
 
 @media (min-width: 680px) {
   #topbar{position:relative}
@@ -1636,6 +1739,8 @@ input[type=file]{display:none}
     }
 
     btn.disabled = true;
+    if (answerInput) answerInput.disabled = true;
+    if (customQInput) customQInput.disabled = true;
     btn.textContent = 'Saving...';
     errEl.textContent = '';
 
@@ -1650,6 +1755,8 @@ input[type=file]{display:none}
       if (!res.ok || !data.ok) {
         errEl.textContent = data.error || 'Failed to save security question.';
         btn.disabled = false;
+        if (answerInput) answerInput.disabled = false;
+        if (customQInput) customQInput.disabled = false;
         btn.textContent = 'Save & Continue';
         return;
       }
@@ -1659,6 +1766,8 @@ input[type=file]{display:none}
     } catch (e) {
       errEl.textContent = 'Connection error. Please try again.';
       btn.disabled = false;
+      if (answerInput) answerInput.disabled = false;
+      if (customQInput) customQInput.disabled = false;
       btn.textContent = 'Save & Continue';
     }
   }
@@ -1685,6 +1794,8 @@ input[type=file]{display:none}
     }
 
     btn.disabled = true;
+    if (answerInput) answerInput.disabled = true;
+    if (customQInput) customQInput.disabled = true;
     btn.textContent = 'Verifying...';
     errEl.textContent = '';
 
@@ -1705,6 +1816,8 @@ input[type=file]{display:none}
       if (!res.ok || !data.ok) {
         errEl.textContent = data.error || 'Incorrect answer. Please try again.';
         btn.disabled = false;
+        if (answerInput) answerInput.disabled = false;
+        if (customQInput) customQInput.disabled = false;
         btn.textContent = 'Verify Answer';
         return;
       }
@@ -1714,6 +1827,8 @@ input[type=file]{display:none}
     } catch (e) {
       errEl.textContent = 'Connection error. Please try again.';
       btn.disabled = false;
+      if (answerInput) answerInput.disabled = false;
+      if (customQInput) customQInput.disabled = false;
       btn.textContent = 'Verify Answer';
     }
   }
