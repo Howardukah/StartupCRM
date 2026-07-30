@@ -633,6 +633,12 @@ input[type=file]{display:none}
 
     .auth-quote-wrap {
       max-width: 540px;
+      width: 100%;
+      min-height: 220px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
       text-align: center;
       opacity: 0;
       animation: fadeInQuote 1.5s ease 0.3s forwards;
@@ -644,24 +650,28 @@ input[type=file]{display:none}
 
     .auth-quote-mark {
       display: block;
-      font-size: 72px;
+      font-size: 64px;
       line-height: 1;
       color: var(--accent);
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       font-family: Georgia, serif;
     }
 
     .auth-quote-text {
-      font-size: 34px;
+      font-size: 28px;
       line-height: 1.4;
       font-weight: 600;
       color: #E2E8F0;
-      margin-bottom: 24px;
+      margin-bottom: 16px;
+      min-height: 110px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       transition: opacity 0.4s ease;
     }
 
     .auth-quote-author {
-      font-size: 15px;
+      font-size: 14px;
       color: #64748B;
       font-weight: 600;
       letter-spacing: 0.05em;
@@ -672,12 +682,13 @@ input[type=file]{display:none}
     /* ── RIGHT PANEL ─────────────────────────────────────────── */
     .auth-panel {
       width: 460px;
+      min-height: 520px;
       background: #0D0D10;
       border-left: 1px solid rgba(255,255,255,0.07);
       display: flex;
       flex-direction: column;
       justify-content: center;
-      padding: 56px 48px;
+      padding: 48px 44px;
       position: relative;
       z-index: 2;
       opacity: 0;
@@ -850,9 +861,86 @@ input[type=file]{display:none}
     #notfound-screen .contact { margin-top: 30px; font-size: 14px; color: #111; font-weight: 500; }
     #notfound-screen .contact a { color: #111; text-decoration: none; font-weight: 600; }
 
+    /* ── AUTH SECURITY QUESTION FORM STYLES ─────────────────────────── */
+    .sec-select, .sec-input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1.5px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-weight: 500;
+      font-family: var(--sans);
+      color: #fff;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      background-size: 16px;
+      margin-bottom: 16px;
+    }
+    .sec-input {
+      background-image: none;
+    }
+    .sec-select option {
+      background-color: #121318;
+      color: #fff;
+      padding: 10px;
+    }
+    .sec-select:focus, .sec-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(18, 163, 180, 0.15);
+    }
+    .sec-verify-q-box {
+      font-weight: 700;
+      color: var(--teal);
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 16px;
+      background: rgba(18, 163, 180, 0.1);
+      border: 1px solid rgba(18, 163, 180, 0.3);
+      padding: 12px 14px;
+      border-radius: 10px;
+    }
+    .sec-attempts-badge {
+      font-size: 12px;
+      color: #f59e0b;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-weight: 600;
+      display: inline-block;
+      margin-bottom: 16px;
+    }
+
     @media (max-width: 700px) {
+      #auth-screen {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px 16px;
+        overflow-y: auto;
+      }
       .auth-left { display: none; }
-      .auth-panel { width: 100%; border: none; padding: 40px 28px; }
+      .auth-panel {
+        width: 100%;
+        max-width: 420px;
+        min-height: auto;
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 16px;
+        padding: 32px 24px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+        transform: none;
+        animation: none;
+        opacity: 1;
+      }
+      .auth-panel-title { font-size: 22px; }
+      .auth-panel-sub { font-size: 13px; margin-bottom: 24px; }
+      .sec-select, .sec-input { font-size: 14px; padding: 12px 14px; }
     }
   .role-badge{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;padding:4px 8px;border-radius:6px;background:var(--surface-2);color:var(--text-muted)}
   .role-badge.client{background:rgba(18,163,180,0.15);color:var(--teal)}
@@ -923,8 +1011,8 @@ input[type=file]{display:none}
         For your privacy and portal protection, please configure a security question for your first-time setup.
       </div>
 
-      <div class="key-label" style="margin-top:16px;">Select Question</div>
-      <select id="sec-setup-q-select" class="field__input" style="width:100%;margin-bottom:12px;padding:8px 12px;" onchange="toggleCustomQ(this)">
+      <div class="key-label">Select Question</div>
+      <select id="sec-setup-q-select" class="sec-select" onchange="toggleCustomQ(this)">
         <option value="What was the name of your first school?">What was the name of your first school?</option>
         <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
         <option value="What was the name of your first pet?">What was the name of your first pet?</option>
@@ -933,15 +1021,13 @@ input[type=file]{display:none}
         <option value="__custom__">Custom Question...</option>
       </select>
 
-      <div id="sec-custom-q-wrap" style="display:none;margin-bottom:12px;">
+      <div id="sec-custom-q-wrap" style="display:none;">
         <div class="key-label">Custom Question</div>
-        <input type="text" id="sec-setup-custom-q" class="field__input" style="width:100%;padding:8px 12px;" placeholder="Type your custom question...">
+        <input type="text" id="sec-setup-custom-q" class="sec-input" placeholder="Type your custom question...">
       </div>
 
       <div class="key-label">Your Answer</div>
-      <div class="key-input-wrap" style="margin-bottom:16px;">
-        <input type="text" id="sec-setup-answer" class="field__input" style="width:100%;padding:10px 12px;font-size:15px;" placeholder="Enter your answer...">
-      </div>
+      <input type="text" id="sec-setup-answer" class="sec-input" placeholder="Enter your answer...">
 
       <button class="auth-btn" id="sec-setup-btn" onclick="submitSecuritySetup()">Save & Continue</button>
       <div class="auth-error" id="sec-setup-error"></div>
@@ -954,15 +1040,13 @@ input[type=file]{display:none}
         Suspicious activity or a new device login was detected. Please answer your security question to continue.
       </div>
 
-      <div class="key-label" style="margin-top:16px;">Security Question</div>
-      <div id="sec-verify-q-display" style="font-weight:700;color:var(--text);font-size:15px;margin-bottom:14px;background:var(--surface-2);padding:10px 12px;border-radius:6px;border:1px solid var(--border);"></div>
+      <div class="key-label">Security Question</div>
+      <div id="sec-verify-q-display" class="sec-verify-q-box"></div>
 
       <div class="key-label">Your Answer</div>
-      <div class="key-input-wrap" style="margin-bottom:12px;">
-        <input type="text" id="sec-verify-answer" class="field__input" style="width:100%;padding:10px 12px;font-size:15px;" placeholder="Enter your answer...">
-      </div>
+      <input type="text" id="sec-verify-answer" class="sec-input" placeholder="Enter your answer...">
 
-      <div id="sec-attempts-badge" style="font-size:12px;color:var(--amber);margin-bottom:16px;font-weight:600;">Attempt 1 of 3 (3 tries max before bucket lockout)</div>
+      <div id="sec-attempts-badge" class="sec-attempts-badge">Attempt 1 of 3 (3 tries max before lockout)</div>
 
       <button class="auth-btn" id="sec-verify-btn" onclick="submitSecurityVerify()">Verify Answer</button>
       <div class="auth-error" id="sec-verify-error"></div>
