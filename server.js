@@ -5147,17 +5147,19 @@ app.post('/api/asset-bucket/setup-security/:token', bucketAuthLimiter, async (re
 const secVerifyLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, message: { ok: false, error: 'Too many security attempts. Please wait 15 minutes.' } });
 app.post('/api/asset-bucket/verify-security/:token', secVerifyLimiter, async (req, res) => {
   try {
-    const { secretKey, answer } = req.body || {};
-    if (!secretKey || !answer || typeof answer !== 'string') {
-      return res.status(400).json({ ok: false, error: 'Answer is required.' });
+    const { secretKey, question, answer } = req.body || {};
+    if (!question || typeof question !== 'string' || !answer || typeof answer !== 'string') {
+      return res.status(400).json({ ok: false, error: 'Both question selection and answer are required.' });
     }
 
     const bucket = await getBucketByToken(req.params.token);
     if (!bucket || bucket.revoked) return res.status(403).json({ ok: false, error: 'Link invalid or restricted.' });
 
-    const cleanKey = secretKey.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const match = await bcrypt.compare(cleanKey, bucket.secret_key);
-    if (!match) return res.status(401).json({ ok: false, error: 'Invalid access key.' });
+    if (bucket.secret_key && secretKey) {
+      const cleanKey = secretKey.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const match = await bcrypt.compare(cleanKey, bucket.secret_key);
+      if (!match) return res.status(401).json({ ok: false, error: 'Invalid access key.' });
+    }
 
     const crmData = await getCrmData();
     const project = (crmData.projects || []).find(p => p.id === bucket.project_id);
@@ -5170,10 +5172,15 @@ app.post('/api/asset-bucket/verify-security/:token', secVerifyLimiter, async (re
       return res.status(403).json({ ok: false, error: 'Maximum security attempts exceeded. Upload portal is locked.' });
     }
 
+    const cleanQuestion = String(question).trim().toLowerCase();
+    const storedQuestion = String(cfg.securityQuestion || '').trim().toLowerCase();
+    const questionMatch = cleanQuestion === storedQuestion;
+
     const cleanAnswer = String(answer).trim().toLowerCase();
     const answerMatch = await bcrypt.compare(cleanAnswer, cfg.securityAnswerHash);
 
-    if (answerMatch) {
+    // Double Authentication: BOTH selected question AND typed answer MUST match!
+    if (questionMatch && answerMatch) {
       cfg.failedLoginCount = 0;
       cfg.toggleCountDuringFailed = 0;
       cfg.secAttemptsCount = 0;
@@ -5217,7 +5224,8 @@ app.post('/api/asset-bucket/verify-security/:token', secVerifyLimiter, async (re
       }
 
       await setCrmData(crmData);
-      return res.status(400).json({ ok: false, error: `Incorrect answer. ${attemptsLeft} attempt(s) remaining.` });
+      const failReason = !questionMatch ? 'Incorrect security question selected.' : 'Incorrect answer.';
+      return res.status(400).json({ ok: false, error: `${failReason} (${attemptsLeft} attempt${attemptsLeft > 1 ? 's' : ''} remaining)` });
     }
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

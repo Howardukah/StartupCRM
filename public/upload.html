@@ -1469,6 +1469,10 @@ input[type=file]{display:none}
     let question = selectEl ? (selectEl.value === '__custom__' ? (customQInput.value || '').trim() : selectEl.value) : '';
     let answer = (answerInput.value || '').trim();
 
+    if (!question) {
+      errEl.textContent = 'Please select your security question.';
+      return;
+    }
     if (!answer) {
       errEl.textContent = 'Please enter your answer.';
       return;
