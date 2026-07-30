@@ -861,8 +861,15 @@ input[type=file]{display:none}
     #notfound-screen .contact { margin-top: 30px; font-size: 14px; color: #111; font-weight: 500; }
     #notfound-screen .contact a { color: #111; text-decoration: none; font-weight: 600; }
 
-    /* ── AUTH SECURITY QUESTION FORM & CUSTOM SELECT STYLES ─────────────────────────── */
-    .sec-select, .sec-input {
+    /* ── 100% CUSTOM THEMED DROPDOWN STYLES ─────────────────────────── */
+    .custom-dropdown-container {
+      position: relative;
+      width: 100%;
+      margin-bottom: 14px;
+      user-select: none;
+      text-align: left;
+    }
+    .custom-dropdown-trigger {
       width: 100%;
       background: rgba(255, 255, 255, 0.04);
       border: 1.5px solid rgba(255, 255, 255, 0.1);
@@ -872,91 +879,49 @@ input[type=file]{display:none}
       font-weight: 500;
       font-family: var(--sans);
       color: #fff;
-      outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s;
-      appearance: none;
-      -webkit-appearance: none;
-      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2312A3B4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-      background-repeat: no-repeat;
-      background-position: right 14px center;
-      background-size: 16px;
-      margin-bottom: 16px;
-    }
-    .sec-input {
-      background-image: none;
-    }
-    .sec-select option {
-      background-color: #0E0F14;
-      color: #F1F5F9;
-      padding: 12px 14px;
-      font-size: 14px;
-    }
-    .sec-select option:hover,
-    .sec-select option:focus,
-    .sec-select option:active,
-    .sec-select option:checked {
-      background-color: rgba(18, 163, 180, 0.3) !important;
-      background-image: linear-gradient(0deg, rgba(18, 163, 180, 0.3) 0%, rgba(18, 163, 180, 0.3) 100%) !important;
-      color: #00F2FE !important;
-    }
-    .sec-select:focus, .sec-input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(18, 163, 180, 0.15);
-    }
-
-    /* ── CUSTOM DROPDOWN SELECTOR SYSTEM ─────────────────────────── */
-    .custom-sec-select-box {
-      width: 100%;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1.5px solid rgba(255, 255, 255, 0.1);
-      border-radius: 10px;
-      padding: 12px 14px;
-      font-size: 14px;
-      font-weight: 500;
-      font-family: var(--sans);
-      color: #fff;
-      outline: none;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      transition: border-color 0.2s, box-shadow 0.2s;
+      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
     }
-    .custom-sec-select-box:focus, .custom-sec-select-box.is-open {
-      border-color: var(--accent);
+    .custom-dropdown-trigger:hover, .custom-dropdown-trigger.open {
+      border-color: var(--teal);
+      background: rgba(255, 255, 255, 0.06);
       box-shadow: 0 0 0 3px rgba(18, 163, 180, 0.18);
     }
-    .custom-sec-select-box svg {
+    .custom-dropdown-arrow {
       transition: transform 0.2s ease;
+      flex-shrink: 0;
+      margin-left: 8px;
     }
-    .custom-sec-select-box.is-open svg {
+    .custom-dropdown-trigger.open .custom-dropdown-arrow {
       transform: rotate(180deg);
     }
-    .custom-sec-select-menu {
+    .custom-dropdown-menu {
       position: absolute;
       top: calc(100% + 6px);
       left: 0;
       width: 100%;
       background: #111218;
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.14);
       border-radius: 12px;
-      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65);
-      z-index: 100;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75);
+      z-index: 999;
       display: none;
-      overflow: hidden;
-      max-height: 240px;
+      max-height: 220px;
       overflow-y: auto;
       padding: 6px;
     }
-    .custom-sec-select-menu.is-open {
+    .custom-dropdown-menu.open {
       display: block;
-      animation: fadeInSelectMenu 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+      animation: customDropdownFade 0.15s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    @keyframes fadeInSelectMenu {
-      from { opacity: 0; transform: translateY(-6px); }
+    @keyframes customDropdownFade {
+      from { opacity: 0; transform: translateY(-4px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    .custom-sec-select-item {
+    .custom-dropdown-option {
       padding: 10px 14px;
       font-size: 14px;
       color: #CBD5E1;
@@ -964,14 +929,32 @@ input[type=file]{display:none}
       cursor: pointer;
       transition: background 0.15s, color 0.15s;
     }
-    .custom-sec-select-item:hover {
+    .custom-dropdown-option:hover {
       background: rgba(18, 163, 180, 0.15);
       color: #fff;
     }
-    .custom-sec-select-item.is-selected {
-      background: rgba(18, 163, 180, 0.22);
-      color: var(--accent);
+    .custom-dropdown-option.selected {
+      background: rgba(18, 163, 180, 0.25);
+      color: var(--teal);
       font-weight: 700;
+    }
+    .sec-input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1.5px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-weight: 500;
+      font-family: var(--sans);
+      color: #fff;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      margin-bottom: 16px;
+    }
+    .sec-input:focus {
+      border-color: var(--teal);
+      box-shadow: 0 0 0 3px rgba(18, 163, 180, 0.15);
     }
     .sec-verify-q-box {
       font-weight: 700;
@@ -1091,21 +1074,30 @@ input[type=file]{display:none}
       </div>
 
       <div class="key-label">Select Question</div>
-      <select id="sec-setup-q-select" class="sec-select" onchange="toggleCustomQ(this)">
-        <option value="What was the name of your first school?">What was the name of your first school?</option>
-        <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
-        <option value="What was the name of your first pet?">What was the name of your first pet?</option>
-        <option value="In what city were you born?">In what city were you born?</option>
-        <option value="What was the make of your first car?">What was the make of your first car?</option>
-        <option value="__custom__">Custom Question...</option>
-      </select>
+      <div class="custom-dropdown-container" id="sec-setup-dropdown">
+        <div class="custom-dropdown-trigger" onclick="toggleSecDropdown(this)">
+          <span class="custom-dropdown-selected">What was the name of your first school?</span>
+          <svg class="custom-dropdown-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+        <div class="custom-dropdown-menu">
+          <div class="custom-dropdown-option selected" onclick="selectSecOption(this, 'What was the name of your first school?')">What was the name of your first school?</div>
+          <div class="custom-dropdown-option" onclick="selectSecOption(this, 'What is your mother\'s maiden name?')">What is your mother's maiden name?</div>
+          <div class="custom-dropdown-option" onclick="selectSecOption(this, 'What was the name of your first pet?')">What was the name of your first pet?</div>
+          <div class="custom-dropdown-option" onclick="selectSecOption(this, 'In what city were you born?')">In what city were you born?</div>
+          <div class="custom-dropdown-option" onclick="selectSecOption(this, 'What was the make of your first car?')">What was the make of your first car?</div>
+          <div class="custom-dropdown-option" onclick="selectSecOption(this, '__custom__')">Custom Question...</div>
+        </div>
+      </div>
+      <input type="hidden" id="sec-setup-q-val" value="What was the name of your first school?">
 
-      <div id="sec-custom-q-wrap" style="display:none;">
+      <div id="sec-custom-q-wrap" style="display:none; margin-top: 12px;">
         <div class="key-label">Custom Question</div>
         <input type="text" id="sec-setup-custom-q" class="sec-input" placeholder="Type your custom question...">
       </div>
 
-      <div class="key-label">Your Answer</div>
+      <div class="key-label" style="margin-top: 12px;">Your Answer</div>
       <input type="text" id="sec-setup-answer" class="sec-input" placeholder="Enter your answer...">
 
       <button class="auth-btn" id="sec-setup-btn" onclick="submitSecuritySetup()">Save & Continue</button>
@@ -1120,21 +1112,30 @@ input[type=file]{display:none}
       </div>
 
       <div class="key-label">Select Security Question</div>
-      <select id="sec-verify-q-select" class="sec-select" onchange="toggleVerifyCustomQ(this)">
-        <option value="What was the name of your first school?">What was the name of your first school?</option>
-        <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
-        <option value="What was the name of your first pet?">What was the name of your first pet?</option>
-        <option value="In what city were you born?">In what city were you born?</option>
-        <option value="What was the make of your first car?">What was the make of your first car?</option>
-        <option value="__custom__">Custom Question...</option>
-      </select>
+      <div class="custom-dropdown-container" id="sec-verify-dropdown">
+        <div class="custom-dropdown-trigger" onclick="toggleSecDropdown(this)">
+          <span class="custom-dropdown-selected">What was the name of your first school?</span>
+          <svg class="custom-dropdown-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+        <div class="custom-dropdown-menu">
+          <div class="custom-dropdown-option selected" onclick="selectSecOption(this, 'What was the name of your first school?')">What was the name of your first school?</div>
+          <div class="custom-dropdown-option" onclick="selectSecOption(this, 'What is your mother\'s maiden name?')">What is your mother's maiden name?</div>
+          <div class="custom-dropdown-option" onclick="selectSecOption(this, 'What was the name of your first pet?')">What was the name of your first pet?</div>
+          <div class="custom-dropdown-option" onclick="selectSecOption(this, 'In what city were you born?')">In what city were you born?</div>
+          <div class="custom-dropdown-option" onclick="selectSecOption(this, 'What was the make of your first car?')">What was the make of your first car?</div>
+          <div class="custom-dropdown-option" onclick="selectSecOption(this, '__custom__')">Custom Question...</div>
+        </div>
+      </div>
+      <input type="hidden" id="sec-verify-q-val" value="What was the name of your first school?">
 
-      <div id="sec-verify-custom-q-wrap" style="display:none;">
+      <div id="sec-verify-custom-q-wrap" style="display:none; margin-top: 12px;">
         <div class="key-label">Custom Question</div>
         <input type="text" id="sec-verify-custom-q" class="sec-input" placeholder="Type your custom question...">
       </div>
 
-      <div class="key-label">Your Answer</div>
+      <div class="key-label" style="margin-top: 12px;">Your Answer</div>
       <input type="text" id="sec-verify-answer" class="sec-input" placeholder="Enter your answer...">
 
       <button class="auth-btn" id="sec-verify-btn" onclick="submitSecurityVerify()">Verify Answer</button>
@@ -1455,7 +1456,6 @@ input[type=file]{display:none}
         const setupPanel = document.getElementById('sec-setup-panel');
         if (keyPanel) keyPanel.style.display = 'none';
         if (setupPanel) setupPanel.style.display = 'block';
-        if (typeof initCustomSelects === 'function') initCustomSelects();
         return;
       }
 
@@ -1465,12 +1465,8 @@ input[type=file]{display:none}
         const verifyPanel = document.getElementById('sec-verify-panel');
         if (keyPanel) keyPanel.style.display = 'none';
         if (verifyPanel) verifyPanel.style.display = 'block';
-        if (typeof initCustomSelects === 'function') initCustomSelects();
         return;
       }
-
-      // Persist auth so re-opening the link in this browser session skips the key screen
-      try { sessionStorage.setItem('bucket-authed-' + bucketToken, '1'); } catch(e) {}
       showUploadScreen(data.projectName || projectInfo?.projectName || 'Your Project');
     } catch (e) {
       errEl.textContent = 'Could not connect. Please try again.';
@@ -1480,81 +1476,62 @@ input[type=file]{display:none}
   }
   window.submitKey = submitKey;
 
-  function initCustomSelects() {
-    document.querySelectorAll('.sec-select').forEach(select => {
-      if (select.dataset.customInitialized) return;
-      select.dataset.customInitialized = 'true';
-      select.style.display = 'none';
+  function toggleSecDropdown(triggerEl) {
+    const container = triggerEl.closest('.custom-dropdown-container');
+    const menu = container.querySelector('.custom-dropdown-menu');
+    const isOpen = menu.classList.contains('open');
 
-      const wrap = document.createElement('div');
-      wrap.className = 'custom-sec-select-wrap';
-      wrap.style.cssText = 'position:relative;width:100%;margin-bottom:16px;';
-
-      const box = document.createElement('div');
-      box.className = 'custom-sec-select-box';
-      box.tabIndex = 0;
-      box.innerHTML = `<span class="custom-sec-select-label">${escapeHtml(select.options[select.selectedIndex]?.text || select.options[0]?.text || '')}</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
-
-      const menu = document.createElement('div');
-      menu.className = 'custom-sec-select-menu';
-
-      function renderMenu() {
-        menu.innerHTML = '';
-        Array.from(select.options).forEach((opt, idx) => {
-          const item = document.createElement('div');
-          item.className = 'custom-sec-select-item' + (select.selectedIndex === idx ? ' is-selected' : '');
-          item.textContent = opt.text;
-          item.addEventListener('click', () => {
-            select.selectedIndex = idx;
-            select.dispatchEvent(new Event('change', { bubbles: true }));
-            box.querySelector('.custom-sec-select-label').textContent = opt.text;
-            menu.classList.remove('is-open');
-            box.classList.remove('is-open');
-            renderMenu();
-          });
-          menu.appendChild(item);
-        });
-      }
-
-      renderMenu();
-
-      box.addEventListener('click', (e) => {
-        e.stopPropagation();
-        document.querySelectorAll('.custom-sec-select-menu.is-open').forEach(m => {
-          if (m !== menu) { m.classList.remove('is-open'); m.previousElementSibling?.classList.remove('is-open'); }
-        });
-        const isOpen = menu.classList.toggle('is-open');
-        box.classList.toggle('is-open', isOpen);
-      });
-
-      select.parentNode.insertBefore(wrap, select);
-      wrap.appendChild(select);
-      wrap.appendChild(box);
-      wrap.appendChild(menu);
+    document.querySelectorAll('.custom-dropdown-menu.open').forEach(m => {
+      m.classList.remove('open');
+      m.previousElementSibling?.classList.remove('open');
     });
-  }
-  window.initCustomSelects = initCustomSelects;
 
-  document.addEventListener('click', () => {
-    document.querySelectorAll('.custom-sec-select-menu.is-open, .custom-sec-select-box.is-open').forEach(el => el.classList.remove('is-open'));
-  });
-
-  function toggleCustomQ(selectEl) {
-    const customWrap = document.getElementById('sec-custom-q-wrap');
-    if (customWrap) {
-      customWrap.style.display = selectEl.value === '__custom__' ? 'block' : 'none';
+    if (!isOpen) {
+      triggerEl.classList.add('open');
+      menu.classList.add('open');
     }
   }
-  window.toggleCustomQ = toggleCustomQ;
+  window.toggleSecDropdown = toggleSecDropdown;
+
+  function selectSecOption(optionEl, val) {
+    const container = optionEl.closest('.custom-dropdown-container');
+    const triggerText = container.querySelector('.custom-dropdown-selected');
+    const isSetup = container.id === 'sec-setup-dropdown';
+    const hiddenInput = document.getElementById(isSetup ? 'sec-setup-q-val' : 'sec-verify-q-val');
+
+    container.querySelectorAll('.custom-dropdown-option').forEach(opt => opt.classList.remove('selected'));
+    optionEl.classList.add('selected');
+
+    if (hiddenInput) hiddenInput.value = val;
+    if (triggerText) triggerText.textContent = val === '__custom__' ? 'Custom Question...' : val;
+
+    const customWrap = document.getElementById(isSetup ? 'sec-custom-q-wrap' : 'sec-verify-custom-q-wrap');
+    if (customWrap) {
+      customWrap.style.display = val === '__custom__' ? 'block' : 'none';
+    }
+
+    const menu = container.querySelector('.custom-dropdown-menu');
+    const trigger = container.querySelector('.custom-dropdown-trigger');
+    if (menu) menu.classList.remove('open');
+    if (trigger) trigger.classList.remove('open');
+  }
+  window.selectSecOption = selectSecOption;
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.custom-dropdown-container')) {
+      document.querySelectorAll('.custom-dropdown-menu.open, .custom-dropdown-trigger.open').forEach(el => el.classList.remove('open'));
+    }
+  });
 
   async function submitSecuritySetup() {
-    const selectEl = document.getElementById('sec-setup-q-select');
+    const qValInput = document.getElementById('sec-setup-q-val');
     const customQInput = document.getElementById('sec-setup-custom-q');
     const answerInput = document.getElementById('sec-setup-answer');
     const errEl = document.getElementById('sec-setup-error');
     const btn = document.getElementById('sec-setup-btn');
 
-    let question = selectEl.value === '__custom__' ? (customQInput.value || '').trim() : selectEl.value;
+    let rawQ = qValInput ? qValInput.value : '';
+    let question = rawQ === '__custom__' ? (customQInput.value || '').trim() : rawQ;
     let answer = (answerInput.value || '').trim();
 
     if (!question) {
@@ -1595,22 +1572,15 @@ input[type=file]{display:none}
   }
   window.submitSecuritySetup = submitSecuritySetup;
 
-  function toggleVerifyCustomQ(selectEl) {
-    const customWrap = document.getElementById('sec-verify-custom-q-wrap');
-    if (customWrap) {
-      customWrap.style.display = selectEl.value === '__custom__' ? 'block' : 'none';
-    }
-  }
-  window.toggleVerifyCustomQ = toggleVerifyCustomQ;
-
   async function submitSecurityVerify() {
-    const selectEl = document.getElementById('sec-verify-q-select');
+    const qValInput = document.getElementById('sec-verify-q-val');
     const customQInput = document.getElementById('sec-verify-custom-q');
     const answerInput = document.getElementById('sec-verify-answer');
     const errEl = document.getElementById('sec-verify-error');
     const btn = document.getElementById('sec-verify-btn');
 
-    let question = selectEl ? (selectEl.value === '__custom__' ? (customQInput.value || '').trim() : selectEl.value) : '';
+    let rawQ = qValInput ? qValInput.value : '';
+    let question = rawQ === '__custom__' ? (customQInput.value || '').trim() : rawQ;
     let answer = (answerInput.value || '').trim();
 
     if (!question) {
