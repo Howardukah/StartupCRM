@@ -11658,8 +11658,14 @@
 
       try {
         db.team = db.team || []; db.clients = db.clients || []; db.meetings = db.meetings || []; db.deletedMeetingIds = db.deletedMeetingIds || [];
+        db.deletedSprintIds = db.deletedSprintIds || [];
         db.meetings = db.meetings.filter(m => !db.deletedMeetingIds.includes(m.id));
         db.projects = db.projects || []; db.activity = db.activity || []; db.notifications = db.notifications || [];
+        db.projects.forEach(p => {
+          if (!p || !Array.isArray(p.sprints)) return;
+          p.sprints = p.sprints.filter(s => s && s.id && !db.deletedSprintIds.includes(s.id));
+          cleanupEmptySprints(p);
+        });
         db.messages = db.messages || []; db.chatGroups = db.chatGroups || []; db.spreadsheets = db.spreadsheets || []; db.notes = db.notes || []; db.attendance = db.attendance || [];
 
         const member = getMember(userId);
@@ -17715,6 +17721,7 @@
         .filter(s => !Array.isArray(s.tasks) || s.tasks.length === 0)
         .map(s => s.id);
       if (removedIds.length > 0) {
+        db.deletedSprintIds = Array.from(new Set([...(db.deletedSprintIds || []), ...removedIds]));
         p.sprints = p.sprints.filter(s => Array.isArray(s.tasks) && s.tasks.length > 0);
 
         // ── Purge auto-generated meetings for the now-deleted sprints ──
@@ -22326,10 +22333,19 @@
       db.meetings = db.meetings.filter(m => {
         if (m.projectId !== p.id) return true;
         if (m.title && (m.title.startsWith('🚀 Kickoff:') || m.title.startsWith('Sprint Handoff:'))) {
-          return generatedTitles.includes(m.title);
+          const keep = generatedTitles.includes(m.title);
+          if (!keep && m.id) {
+            db.deletedMeetingIds = Array.from(new Set([...(db.deletedMeetingIds || []), m.id]));
+            apiFetch('/api/meetings/' + m.id, { method: 'DELETE' }).catch(() => {});
+          }
+          return keep;
         }
         // Legacy S1toS2 format
         if (/^S\d+toS\d+ meeting$/.test(m.title)) {
+          if (m.id) {
+            db.deletedMeetingIds = Array.from(new Set([...(db.deletedMeetingIds || []), m.id]));
+            apiFetch('/api/meetings/' + m.id, { method: 'DELETE' }).catch(() => {});
+          }
           return false;
         }
         return true;
@@ -22406,8 +22422,24 @@
       try {
         const p = getProject(pid);
         if (!p || !p.sprints.find(x => x.id === sid)) { return; } // already gone
+        const sToDelete = p.sprints.find(x => x.id === sid);
+        db.deletedSprintIds = Array.from(new Set([...(db.deletedSprintIds || []), sid]));
         await apiFetch('/api/projects/' + pid + '/sprints/' + sid, { method: 'DELETE' });
         p.sprints = p.sprints.filter(x => x.id !== sid);
+        if (sToDelete && sToDelete.name && Array.isArray(db.meetings)) {
+          const sName = sToDelete.name;
+          const purgedMtgIds = [];
+          db.meetings = db.meetings.filter(m => {
+            if (!m) return false;
+            const t = m.title || '';
+            const isAuto = t === '🚀 Kickoff: ' + sName || t.startsWith('Sprint Handoff: ' + sName + ' →') || t.endsWith('→ ' + sName);
+            if (isAuto) { purgedMtgIds.push(m.id); return false; }
+            return true;
+          });
+          if (purgedMtgIds.length > 0) {
+            db.deletedMeetingIds = Array.from(new Set([...(db.deletedMeetingIds || []), ...purgedMtgIds]));
+          }
+        }
         syncSprintMeetings(p);
         persistAndRender([() => renderProjectDetail(pid), renderProjects, renderMeetings, renderOverview]);
       } catch (err) {

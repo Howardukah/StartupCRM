@@ -140,7 +140,7 @@ app.get('/:page', (req, res, next) => {
 app.use(express.static(PUBLIC_DIR));
 
 const EMPTY_DB = {
-  team: [], clients: [], meetings: [], deletedMeetingIds: [],
+  team: [], clients: [], meetings: [], deletedMeetingIds: [], deletedSprintIds: [],
   projects: [], messages: [], chatGroups: [], notifications: [],
   spreadsheets: [], notes: [],
   leads: [], proposals: [], pricingCatalog: [], mailTemplates: [], autoMails: []
@@ -1578,17 +1578,36 @@ app.post('/api/db', validateSession, async (req, res) => {
 
       const merged = { ...current };
 
-      const SHARED_KEYS = ['clients', 'projects', 'chatGroups', 'notifications'];
+      const SHARED_KEYS = ['clients', 'chatGroups', 'notifications'];
 
       for (const key of SHARED_KEYS) {
         if (incoming[key] !== undefined) {
           merged[key] = Array.isArray(incoming[key]) ? incoming[key].filter(Boolean) : incoming[key];
         }
       }
+
+      const deletedSprintIds = Array.from(new Set([
+        ...(current.deletedSprintIds || []),
+        ...(incoming.deletedSprintIds || [])
+      ].filter(Boolean)));
+
       const deletedMeetingIds = Array.from(new Set([
         ...(current.deletedMeetingIds || []),
         ...(incoming.deletedMeetingIds || [])
       ].filter(Boolean)));
+
+      if (incoming.projects !== undefined && Array.isArray(incoming.projects)) {
+        const delSprintSet = new Set(deletedSprintIds);
+        merged.projects = incoming.projects.filter(Boolean).map(p => {
+          if (!p || !Array.isArray(p.sprints)) return p;
+          return {
+            ...p,
+            sprints: p.sprints.filter(s => s && s.id && !delSprintSet.has(s.id) && Array.isArray(s.tasks) && s.tasks.length > 0)
+          };
+        });
+      }
+      merged.deletedSprintIds = deletedSprintIds;
+
       if (incoming.meetings !== undefined) {
         const deleted = new Set(deletedMeetingIds);
         merged.meetings = (incoming.meetings || []).filter(m => m && m.id && !deleted.has(m.id));
@@ -1782,7 +1801,22 @@ app.delete('/api/projects/:pid/sprints/:sid/tasks/:tid', validateSession, async 
       if (sprint.tasks.length === initialLen) { res.status(404).json({ error: 'Task not found.' }); return; }
       sprintDeleted = sprint.tasks.length === 0;
       if (sprintDeleted) {
+        crmData.deletedSprintIds = Array.from(new Set([...(crmData.deletedSprintIds || []), sid]));
         project.sprints = (project.sprints || []).filter(s => s && s.id !== sid);
+        if (sprint && sprint.name && Array.isArray(crmData.meetings)) {
+          const sName = sprint.name;
+          const sprintMtgIds = [];
+          crmData.meetings = crmData.meetings.filter(m => {
+            if (!m) return false;
+            const t = m.title || '';
+            const isAuto = t === '🚀 Kickoff: ' + sName || t.startsWith('Sprint Handoff: ' + sName + ' →') || t.endsWith('→ ' + sName);
+            if (isAuto) { sprintMtgIds.push(m.id); return false; }
+            return true;
+          });
+          if (sprintMtgIds.length > 0) {
+            crmData.deletedMeetingIds = Array.from(new Set([...(crmData.deletedMeetingIds || []), ...sprintMtgIds]));
+          }
+        }
       }
       // Purge meetings associated with this task
       if (taskObj && Array.isArray(crmData.meetings)) {
@@ -1822,7 +1856,25 @@ app.delete('/api/projects/:pid/sprints/:sid', validateSession, async (req, res) 
       const isOwnerOrLead = project.ownerId === req.userId || project.projectLeadId === req.userId;
       const isAdminUser = !!me && me.role === 'Admin';
       if (!isAdminUser && !isOwnerOrLead) throw new Error('FORBIDDEN');
+
+      const sprintToDelete = (project.sprints || []).find(s => s && s.id === sid);
+      crmData.deletedSprintIds = Array.from(new Set([...(crmData.deletedSprintIds || []), sid]));
       project.sprints = (project.sprints || []).filter(s => s && s.id !== sid);
+      if (sprintToDelete && sprintToDelete.name && Array.isArray(crmData.meetings)) {
+        const sName = sprintToDelete.name;
+        const sprintMtgIds = [];
+        crmData.meetings = crmData.meetings.filter(m => {
+          if (!m) return false;
+          const t = m.title || '';
+          const isAuto = t === '🚀 Kickoff: ' + sName || t.startsWith('Sprint Handoff: ' + sName + ' →') || t.endsWith('→ ' + sName);
+          if (isAuto) { sprintMtgIds.push(m.id); return false; }
+          return true;
+        });
+        if (sprintMtgIds.length > 0) {
+          crmData.deletedMeetingIds = Array.from(new Set([...(crmData.deletedMeetingIds || []), ...sprintMtgIds]));
+        }
+      }
+
       await setCrmData(crmData);
     });
     res.json({ ok: true });
