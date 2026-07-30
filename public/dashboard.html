@@ -10742,7 +10742,7 @@
       </div>
       <div class="modal__body">
         <div class="field"><label class="field__label">Sprint name</label><input class="field__input s-name" placeholder="e.g. S-16 · Payments"></div>
-        <div class="field"><label class="field__label">Date range</label><input class="field__input s-range" placeholder="e.g. Jul 12 â€“ Jul 26"></div>
+        <div class="field"><label class="field__label">Date range</label><input class="field__input s-range" placeholder="e.g. Jul 12 - Jul 26"></div>
       </div>
       <div class="modal__foot"><button class="btn btn--ghost" data-modal-close="">Cancel</button><button class="btn btn--primary" onclick="addSprint()">Create sprint</button></div>
     </div>
@@ -17986,6 +17986,17 @@
       logActivity('sent final review request for sprint <b>' + s.name + '</b> in <b>' + p.name + '</b>');
       return true;
     }
+    function parseSprintEndDate(rangeStr) {
+      if (!rangeStr) return null;
+      const parts = rangeStr.split(/[\u2013\u2014\-]| to /i).map(x => x.trim()).filter(Boolean);
+      let endStr = parts[parts.length - 1];
+      if (!endStr) return null;
+      if (!/d{4}/.test(endStr)) endStr += ', ' + new Date().getFullYear();
+      const d = new Date(endStr);
+      if (isNaN(d.getTime())) return null;
+      d.setHours(23, 59, 59, 999);
+      return d;
+    }
     function isAwaitingPrevSprint(p, s) {
       const idx = p.sprints.findIndex(x => x.id === s.id);
       const prevSprint = idx > 0 ? p.sprints[idx - 1] : null;
@@ -21976,7 +21987,7 @@
 
     function parseSprintStartDate(rangeStr) {
       if (!rangeStr) return null;
-      const parts = rangeStr.split(/â€“|—|-|\bto\b/i).map(x => x.trim()).filter(Boolean);
+      const parts = rangeStr.split(/[\u2013\u2014\-]||\bto\b/i).map(x => x.trim()).filter(Boolean);
       let startStr = parts[0];
       if (!startStr) return null;
       if (!/\d{4}/.test(startStr)) startStr += ', ' + new Date().getFullYear();
@@ -21987,7 +21998,7 @@
     function splitSprintRange(rangeStr) {
       const text = String(rangeStr || '').trim();
       if (!text) return [];
-      const parts = text.split(/\s+(?:to|[-â€“—])\s+/i).map(x => x.trim()).filter(Boolean);
+      const parts = text.split(/\s+(?:to|[-\u2013\u2014])\s+/i).map(x => x.trim()).filter(Boolean);
       return parts.length > 1 ? parts : [text];
     }
 

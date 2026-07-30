@@ -867,6 +867,8 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
   let activeProjectId = null;
   let allAssets    = [];
   let projectsMap  = {};
+  const _deletingIds = new Set();
+  const deletedAssetIds = new Set();
 
   // ── Storage quotes ──
   const QUOTES = [
@@ -1118,7 +1120,7 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
       const res = await r.json();
       if (!r.ok) throw new Error(res.error || 'Access denied.');
 
-      allAssets = res.assets || [];
+      allAssets = (res.assets || []).filter(a => !deletedAssetIds.has(a.id));
       activeProjectQuotaBytes = res.quotaBytes || STORAGE_LIMIT_BYTES;
       const name = res.projectName || projectName || projectsMap[projectId] || 'Project Assets';
       activeNameEl.textContent = name;
@@ -1142,6 +1144,7 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
 
   // ── Render asset cards ──
   function renderAssets(assets) {
+    assets = (assets || []).filter(a => !deletedAssetIds.has(a.id));
     statCountEl.textContent = `${assets.length} file${assets.length !== 1 ? 's' : ''}`;
     const totalBytes = assets.reduce((s, a) => s + parseInt(a.size_bytes || 0), 0);
     const usedMB = totalBytes / (1024 * 1024);
@@ -1261,19 +1264,26 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
   };
 
   window.deleteAsset = async (id) => {
+    if (!id || _deletingIds.has('asset:' + id)) return;
     const ok = await confirmDialog('Permanently delete this asset from storage?');
     if (!ok) return;
-    
-    // Optimistic UI Update: immediately remove from array and re-render
+
+    _deletingIds.add('asset:' + id);
+    deletedAssetIds.add(id);
+
+    // Instant 0ms Optimistic UI Update: immediately remove from array and re-render
     allAssets = allAssets.filter(a => a.id !== id);
     renderAssets(allAssets);
-    
+
     try {
       const r = await fetch(`${SERVER}/api/storage/assets/${id}`, { method: 'DELETE', headers: authHeaders() });
       if (!r.ok) throw new Error();
     } catch { 
+      deletedAssetIds.delete(id);
       showSlideNotification('Delete failed', 'Could not delete the file. Please try again later.', 'error');
       loadProjectAssets(activeProjectId, activeNameEl.textContent, true);
+    } finally {
+      setTimeout(() => _deletingIds.delete('asset:' + id), 500);
     }
   };
 
