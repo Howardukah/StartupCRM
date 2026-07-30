@@ -286,15 +286,31 @@ async function hashPlaintextPasswords(data) {
   return data;
 }
 
-async function setCrmData(data) {
+async function setCrmData(data, { retries = 3, baseDelayMs = 500 } = {}) {
   await hashPlaintextPasswords(data);
-  const { error } = await supabase.from('crm').upsert({ id: 'main', data });
-  if (error) throw new Error(error.message);
-  // Write-through: update cache instantly so the next read is always fresh.
-  _crmCache = structuredClone(data);
-  _crmCacheTime = Date.now();
-  // Broadcast ping to all connected WebSockets
-  io.emit('db_changed');
+  let lastErr;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const { error } = await supabase.from('crm').upsert({ id: 'main', data });
+    if (!error) {
+      // Write-through: update cache instantly so the next read is always fresh.
+      _crmCache = structuredClone(data);
+      _crmCacheTime = Date.now();
+      // Broadcast ping to all connected WebSockets
+      io.emit('db_changed');
+      return;
+    }
+    lastErr = error;
+    const isTimeout = error.message && (
+      error.message.includes('timeout') ||
+      error.message.includes('canceling statement') ||
+      error.message.includes('statement timeout')
+    );
+    if (!isTimeout || attempt === retries) break;
+    const delay = baseDelayMs * Math.pow(2, attempt - 1); // 500ms, 1000ms, 2000ms
+    console.warn(`setCrmData: Supabase timeout on attempt ${attempt}, retrying in ${delay}ms...`);
+    await new Promise(r => setTimeout(r, delay));
+  }
+  throw new Error(lastErr ? lastErr.message : 'setCrmData failed after retries');
 }
 
 app.set('trust proxy', 1); // Render sits behind exactly 1 proxy hop — trust only that layer
@@ -1726,19 +1742,24 @@ PER_RECORD_COLLECTIONS.forEach(({ key, route }) => {
 app.delete('/api/projects/:pid/sprints/:sid/tasks/:tid', validateSession, async (req, res) => {
   try {
     const { pid, sid, tid } = req.params;
-    const crmData = await getCrmData();
-    const project = (crmData.projects || []).find(p => p && p.id === pid);
-    if (!project) return res.status(404).json({ error: 'Project not found.' });
-    const sprint = (project.sprints || []).find(s => s && s.id === sid);
-    if (!sprint) return res.status(404).json({ error: 'Sprint not found.' });
-    const initialLen = (sprint.tasks || []).length;
-    sprint.tasks = (sprint.tasks || []).filter(t => t && t.id !== tid);
-    if (sprint.tasks.length === initialLen) return res.status(404).json({ error: 'Task not found.' });
-    if (sprint.tasks.length === 0) {
-      project.sprints = (project.sprints || []).filter(s => s && s.id !== sid);
-    }
-    await setCrmData(crmData);
-    res.json({ ok: true, sprintDeleted: sprint.tasks.length === 0 });
+    // Serialise: read → mutate → write atomically to avoid race-condition timeouts
+    let sprintDeleted = false;
+    await (async () => {
+      const crmData = await getCrmData();
+      const project = (crmData.projects || []).find(p => p && p.id === pid);
+      if (!project) { res.status(404).json({ error: 'Project not found.' }); return; }
+      const sprint = (project.sprints || []).find(s => s && s.id === sid);
+      if (!sprint) { res.status(404).json({ error: 'Sprint not found.' }); return; }
+      const initialLen = (sprint.tasks || []).length;
+      sprint.tasks = (sprint.tasks || []).filter(t => t && t.id !== tid);
+      if (sprint.tasks.length === initialLen) { res.status(404).json({ error: 'Task not found.' }); return; }
+      sprintDeleted = sprint.tasks.length === 0;
+      if (sprintDeleted) {
+        project.sprints = (project.sprints || []).filter(s => s && s.id !== sid);
+      }
+      await setCrmData(crmData);
+      res.json({ ok: true, sprintDeleted });
+    })();
   } catch (e) {
     console.error('Delete task error:', e);
     res.status(500).json({ error: e.message });
