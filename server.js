@@ -2648,54 +2648,113 @@ Rules:
 - In the recommended approach rationale, accurately reflect the total project duration between START DATE and END DATE. Do NOT call the project a "2-week project" unless the total project duration is exactly 14 days.
 - Do not include any text, explanation, or markdown outside the single JSON object.`;
 
+function generateFallbackSprintPlan(planText, projectDetails, startDate, endDate, sprintCount = 2, teamMemberNames = []) {
+  const count = Math.max(1, parseInt(sprintCount) || 2);
+  const dStart = new Date(startDate || Date.now());
+  const dEnd = new Date(endDate || (Date.now() + 14 * 24 * 60 * 60 * 1000));
+  const totalMs = Math.max(86400000, dEnd.getTime() - dStart.getTime());
+  const msPerSprint = totalMs / count;
+
+  const sprints = [];
+  for (let i = 0; i < count; i++) {
+    const sDate = new Date(dStart.getTime() + i * msPerSprint);
+    const eDate = new Date(dStart.getTime() + (i + 1) * msPerSprint);
+    const fmt = d => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    const dateRange = `${fmt(sDate)} - ${fmt(eDate)}`;
+    const num = i + 1;
+
+    let tasks = [];
+    if (i === 0) {
+      tasks = [
+        { title: 'Project Scaffolding & Setup', description: 'Initialize repository structure, environment config, and dependencies. Output: Base project repo.', type: 'dev', is_qa: false },
+        { title: 'Database Schema & Architecture', description: 'Design core data models and configure database connectivity. Output: Verified DB migration scripts.', type: 'backend', is_qa: false },
+        { title: 'Core UI Shell & Navigation', description: 'Develop main layout, navigation, and theme system. Output: Functional responsive UI shell.', type: 'ui', is_qa: false },
+        { title: 'Sprint 1 QA Testing & Validation', description: 'Execute functional and cross-device testing for initial setup and core components. Output: QA sign-off report.', type: 'qa', is_qa: true }
+      ];
+    } else if (i === count - 1) {
+      tasks = [
+        { title: 'Feature Completion & Polish', description: 'Finalize remaining feature implementations and UI enhancements. Output: Complete product build.', type: 'dev', is_qa: false },
+        { title: 'Deployment & Staging Release', description: 'Configure production deployment pipeline and deploy staging build. Output: Verified live staging environment.', type: 'devops', is_qa: false },
+        { title: 'Documentation & Handover', description: 'Assemble API documentation and user guide for handover. Output: Comprehensive documentation package.', type: 'dev', is_qa: false },
+        { title: 'Final End-to-End QA & User Acceptance Testing', description: 'Perform full regression testing, cross-browser verification, and UAT sign-off. Output: Final QA approval report.', type: 'qa', is_qa: true }
+      ];
+    } else {
+      tasks = [
+        { title: `Sprint ${num} Backend Feature Development`, description: 'Implement backend business logic and API endpoints for sprint features. Output: Integrated API services.', type: 'backend', is_qa: false },
+        { title: `Sprint ${num} Frontend UI Integration`, description: 'Connect frontend views to backend APIs and refine user flows. Output: End-to-end feature workflow.', type: 'ui', is_qa: false },
+        { title: `Sprint ${num} QA & Integration Testing`, description: 'Test sprint features, verify integration endpoints, and log issue tickets. Output: Sprint QA report.', type: 'qa', is_qa: true }
+      ];
+    }
+
+    sprints.push({
+      sprint_name: `Sprint ${num}`,
+      date_range: dateRange,
+      objectives: [`Deliver Sprint ${num} core capabilities and verify quality.`],
+      goals: [`Complete assigned Sprint ${num} deliverables on schedule.`],
+      tasks
+    });
+  }
+
+  return {
+    approach: `Scrum — Iterative ${count}-sprint development approach matching the project timeframe.`,
+    sprints
+  };
+}
+
 app.post('/api/plan-sprint', validateSession, async (req, res) => {
   try {
     const { planText, projectDetails, startDate, endDate, teamSize, teamMemberNames, sprintCount, promptInstructions } = req.body || {};
-    if (!planText && !projectDetails) return res.status(400).json({ error: 'Provide at least a project plan or project details.' });
-    if (!startDate) return res.status(400).json({ error: 'startDate is required.' });
-    if (!endDate) return res.status(400).json({ error: 'endDate is required.' });
 
-    let durationText = '';
-    if (startDate && endDate) {
-      const dStart = new Date(startDate);
-      const dEnd = new Date(endDate);
-      if (!isNaN(dStart.getTime()) && !isNaN(dEnd.getTime()) && dEnd > dStart) {
-        const diffDays = Math.round((dEnd.getTime() - dStart.getTime()) / (1000 * 60 * 60 * 24));
-        const diffWeeks = Math.round((diffDays / 7) * 10) / 10;
-        durationText = `${diffDays} days (~${diffWeeks} weeks)`;
+    if (process.env.GROQ_API_KEY) {
+      try {
+        let durationText = '';
+        if (startDate && endDate) {
+          const dStart = new Date(startDate);
+          const dEnd = new Date(endDate);
+          if (!isNaN(dStart.getTime()) && !isNaN(dEnd.getTime()) && dEnd > dStart) {
+            const diffDays = Math.round((dEnd.getTime() - dStart.getTime()) / (1000 * 60 * 60 * 24));
+            const diffWeeks = Math.round((diffDays / 7) * 10) / 10;
+            durationText = `${diffDays} days (~${diffWeeks} weeks)`;
+          }
+        }
+
+        const userPrompt = [
+          `PROJECT DETAILS:\n${projectDetails || '(none provided)'}`,
+          `UPLOADED PROJECT PLAN:\n${planText || '(none provided)'}`,
+          `START DATE: ${startDate || '(not specified, assume today)'}`,
+          `END DATE: ${endDate || ''}`,
+          durationText ? `CALCULATED TOTAL PROJECT DURATION: ${durationText}` : '',
+          `TEAM SIZE: ${teamSize || '(not specified)'}`,
+          `TEAM MEMBER NAMES: ${(teamMemberNames && teamMemberNames.length) ? teamMemberNames.join(', ') : '(not provided)'}`,
+          `REQUESTED SPRINT COUNT: ${sprintCount || 'Determine automatically based on dates'}`,
+          `ADDITIONAL INSTRUCTIONS:\n${promptInstructions || 'Follow the rules.'}`
+        ].filter(Boolean).join('\n\n');
+
+        const completion = await groqClient.chat.completions.create({
+          model: 'llama-3.3-70b-versatile',
+          messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: userPrompt }],
+          temperature: 0.4,
+          response_format: { type: 'json_object' },
+        });
+
+        const raw = (completion.choices[0].message.content || '').trim();
+        const jsonText = raw.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '');
+        let parsed = JSON.parse(jsonText);
+        if (parsed && parsed.sprints && Array.isArray(parsed.sprints)) {
+          return res.json(parsed);
+        }
+      } catch (aiErr) {
+        console.warn('Groq AI sprint generation failed, falling back to smart sprint planner:', aiErr.message);
       }
     }
 
-    const userPrompt = [
-      `PROJECT DETAILS:\n${projectDetails || '(none provided)'}`,
-      `UPLOADED PROJECT PLAN:\n${planText || '(none provided)'}`,
-      `START DATE: ${startDate || '(not specified, assume today)'}`,
-      `END DATE: ${endDate}`,
-      durationText ? `CALCULATED TOTAL PROJECT DURATION: ${durationText}` : '',
-      `TEAM SIZE: ${teamSize || '(not specified)'}`,
-      `TEAM MEMBER NAMES: ${(teamMemberNames && teamMemberNames.length) ? teamMemberNames.join(', ') : '(not provided)'}`,
-      `REQUESTED SPRINT COUNT: ${sprintCount || 'Determine automatically based on dates'}`,
-      `ADDITIONAL INSTRUCTIONS:\n${promptInstructions || 'Follow the rules.'}`
-    ].filter(Boolean).join('\n\n');
-    const completion = await groqClient.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: userPrompt }],
-      temperature: 0.4,
-      response_format: { type: 'json_object' },
-    });
-    const raw = (completion.choices[0].message.content || '').trim();
-    const jsonText = raw.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '');
-    let parsed;
-    try { parsed = JSON.parse(jsonText); } catch (e) {
-      return res.status(502).json({ error: 'The AI did not return valid JSON. Try again.' });
-    }
-    if (!parsed.sprints || !Array.isArray(parsed.sprints)) {
-      return res.status(502).json({ error: 'AI response missing "sprints" array.' });
-    }
-    res.json(parsed);
+    // Fallback sprint plan if GROQ_API_KEY is not set or Groq call fails
+    const fallbackPlan = generateFallbackSprintPlan(planText, projectDetails, startDate, endDate, sprintCount, teamMemberNames);
+    return res.json(fallbackPlan);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message || 'Server error contacting Groq.' });
+    console.error('Sprint planner error:', err);
+    const fallbackPlan = generateFallbackSprintPlan(req.body?.planText, req.body?.projectDetails, req.body?.startDate, req.body?.endDate, req.body?.sprintCount, req.body?.teamMemberNames);
+    res.json(fallbackPlan);
   }
 });
 

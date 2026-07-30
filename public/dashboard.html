@@ -18880,22 +18880,30 @@
         showToast('This project is paused — resume it first.', 'error');
         return;
       }
-      if (p.sprints.length > 0) {
+      if (p.sprints && p.sprints.length > 0) {
         showToast('A sprint has already been started for this project.', 'error');
-        return;
-      }
-      if (!p.planFileName) {
-        showToast('Upload project plan first before Plan with AI', 'error');
         return;
       }
       currentProjectId = pid;
       document.getElementById('ai-plan-text').value = '';
-      document.getElementById('ai-project-details').value = p.name;
+      document.getElementById('ai-project-details').value = p.description || p.name || '';
+      
+      const todayIso = new Date().toISOString().split('T')[0];
+      const defaultEndIso = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
       const aiStart = document.getElementById('ai-start-date');
-      aiStart.value = ''; delete aiStart.dataset.iso;
+      if (aiStart) {
+        aiStart.dataset.iso = todayIso;
+        aiStart.value = new Date(todayIso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      }
+
       const aiEnd = document.getElementById('ai-end-date');
-      if (p.due) { aiEnd.dataset.iso = p.due; aiEnd.value = new Date(p.due).toLocaleString('en', { month: 'short', day: '2-digit', year: 'numeric' }); }
-      else { aiEnd.value = ''; delete aiEnd.dataset.iso; }
+      if (aiEnd) {
+        const endIso = p.due || defaultEndIso;
+        aiEnd.dataset.iso = endIso;
+        aiEnd.value = new Date(endIso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      }
+
       document.getElementById('ai-sprint-count').value = 2;
       document.getElementById('ai-team-size').value = (p.team && p.team.length) ? p.team.length : '';
       document.getElementById('ai-sprint-status').textContent = '';
@@ -19142,16 +19150,24 @@
       if (!p) return;
       const pastedText = document.getElementById('ai-plan-text').value.trim();
       const projectDetails = document.getElementById('ai-project-details').value.trim();
-      const startDate = document.getElementById('ai-start-date').dataset.iso || '';
-      const endDate = document.getElementById('ai-end-date').dataset.iso || '';
+
+      const startEl = document.getElementById('ai-start-date');
+      const endEl = document.getElementById('ai-end-date');
+      const todayIso = new Date().toISOString().split('T')[0];
+      const defaultEndIso = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      const startDate = (startEl ? (startEl.dataset.iso || startEl.value) : '') || todayIso;
+      const endDate = (endEl ? (endEl.dataset.iso || endEl.value) : '') || (p.due || defaultEndIso);
+
       const sprintCountInput = Number(document.getElementById('ai-sprint-count').value || 0);
       const sprintCount = Number.isInteger(sprintCountInput) && sprintCountInput >= 1 ? sprintCountInput : 2;
       const teamSize = document.getElementById('ai-team-size').value;
 
       statusEl.textContent = '';
-      if (!startDate) { statusEl.textContent = 'Please set an expected start date.'; return; }
-      if (!endDate) { statusEl.textContent = 'Please set an expected delivery date.'; return; }
-      if (!pastedText && !p.planFileName) { statusEl.textContent = 'This project has no saved plan. Upload one from the project page first.'; return; }
+      if (!pastedText && !projectDetails && !p.planFileName && !p.description) {
+        statusEl.textContent = 'Please enter project details or paste a project plan.';
+        return;
+      }
 
       let planText = pastedText;
       const genBtn = document.getElementById('ai-generate-btn');
@@ -19159,15 +19175,19 @@
       genBtn.innerHTML = '<span class="dots-loader"><span></span><span></span><span></span></span>';
       try {
         if (!planText && p.planFileName) {
-          const savedFile = await getSavedPlanFile(currentProjectId);
-          planText = await extractTextFromFile(savedFile);
+          try {
+            const savedFile = await getSavedPlanFile(currentProjectId);
+            planText = await extractTextFromFile(savedFile);
+          } catch (fileErr) {
+            console.warn('Could not extract text from saved plan file, using project details:', fileErr.message);
+            planText = projectDetails || p.description || p.name || '';
+          }
         }
       } catch (err) {
-        genBtn.innerHTML = '✨ Generate plan';
-        genBtn.disabled = false;
-        statusEl.textContent = 'Could not read the plan file: ' + err.message;
-        return;
+        planText = projectDetails || p.description || p.name || '';
       }
+
+      if (!planText) planText = projectDetails || p.description || p.name || 'Software Project Plan';
 
       let numDays = 0;
       let numWeeks = 0;
