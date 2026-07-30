@@ -17708,12 +17708,39 @@
     }
     function cleanupEmptySprints(p) {
       if (!p || !Array.isArray(p.sprints)) return [];
+      const emptySprintNames = p.sprints
+        .filter(s => !Array.isArray(s.tasks) || s.tasks.length === 0)
+        .map(s => s.name);
       const removedIds = p.sprints
         .filter(s => !Array.isArray(s.tasks) || s.tasks.length === 0)
         .map(s => s.id);
       if (removedIds.length > 0) {
         p.sprints = p.sprints.filter(s => Array.isArray(s.tasks) && s.tasks.length > 0);
-        syncSprintMeetings(p);
+
+        // ── Purge auto-generated meetings for the now-deleted sprints ──
+        if (Array.isArray(db.meetings)) {
+          const purgedMtgIds = [];
+          db.meetings = db.meetings.filter(m => {
+            if (!m) return false;
+            const t = m.title || '';
+            // Match Kickoff: <sprintName> or Handoff: <sprintName> → <nextName>
+            const isAutoForRemovedSprint = emptySprintNames.some(name =>
+              t === '🚀 Kickoff: ' + name ||
+              t.startsWith('Sprint Handoff: ' + name + ' →') ||
+              t.endsWith('→ ' + name)
+            );
+            if (isAutoForRemovedSprint) { purgedMtgIds.push(m.id); return false; }
+            return true;
+          });
+          if (purgedMtgIds.length > 0) {
+            db.deletedMeetingIds = Array.from(new Set([...(db.deletedMeetingIds || []), ...purgedMtgIds]));
+            purgedMtgIds.forEach(mid => {
+              apiFetch('/api/meetings/' + mid, { method: 'DELETE' }).catch(() => {});
+            });
+          }
+        }
+
+        syncSprintMeetings(p); // reconcile any remaining meetings
       }
       return removedIds;
     }
