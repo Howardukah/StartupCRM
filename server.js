@@ -4939,6 +4939,7 @@ app.get('/api/asset-bucket/validate/:token', async (req, res) => {
 
     const customQuota = project?.assetBucketConfig?.customQuotaBytes;
     const quotaBytes = customQuota ? parseInt(customQuota) : CLIENT_QUOTA_BYTES;
+    const hasSecurity = !!(project?.assetBucketConfig?.securityQuestion && project?.assetBucketConfig?.securityAnswerHash);
 
     res.json({
       valid: true,
@@ -4946,6 +4947,7 @@ app.get('/api/asset-bucket/validate/:token', async (req, res) => {
       projectId: bucket.project_id,
       projectName,
       requiresKey: !!bucket.secret_key, // tells frontend whether to show auth screen
+      hasSecurityQuestion: hasSecurity,
       quotaBytes,
     });
   } catch (e) {
@@ -5100,16 +5102,18 @@ app.post('/api/asset-bucket/auth/:token', bucketAuthLimiter, async (req, res) =>
 app.post('/api/asset-bucket/setup-security/:token', bucketAuthLimiter, async (req, res) => {
   try {
     const { secretKey, question, answer } = req.body || {};
-    if (!secretKey || !question || !answer || typeof answer !== 'string') {
+    if (!question || !answer || typeof answer !== 'string') {
       return res.status(400).json({ ok: false, error: 'Question and answer are required.' });
     }
 
     const bucket = await getBucketByToken(req.params.token);
     if (!bucket || bucket.revoked) return res.status(403).json({ ok: false, error: 'Link invalid or restricted.' });
 
-    const cleanKey = secretKey.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const match = await bcrypt.compare(cleanKey, bucket.secret_key);
-    if (!match) return res.status(401).json({ ok: false, error: 'Invalid access key.' });
+    if (bucket.secret_key && secretKey) {
+      const cleanKey = secretKey.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const match = await bcrypt.compare(cleanKey, bucket.secret_key);
+      if (!match) return res.status(401).json({ ok: false, error: 'Invalid access key.' });
+    }
 
     const crmData = await getCrmData();
     const project = (crmData.projects || []).find(p => p.id === bucket.project_id);

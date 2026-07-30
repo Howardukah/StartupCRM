@@ -1191,8 +1191,15 @@ input[type=file]{display:none}
         return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
       }
 
-      // If session already authenticated, skip key screen entirely
+      // If session already authenticated, skip key screen entirely unless security question is not yet configured
       if (skipToUpload) {
+        if (projectInfo.hasSecurityQuestion === false) {
+          document.getElementById('loading-screen').style.display = 'none';
+          document.getElementById('auth-screen').style.display = 'flex';
+          document.getElementById('key-form-panel').style.display = 'none';
+          document.getElementById('sec-setup-panel').style.display = 'block';
+          return;
+        }
         document.getElementById('loading-screen').style.display = 'none';
         showUploadScreen(projectInfo.projectName || 'Your Project');
         return;
