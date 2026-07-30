@@ -1635,6 +1635,10 @@ input[type=file]{display:none}
     const stMain = document.getElementById('main-content-wrapper');
     if (stLoading) stLoading.style.display = 'flex';
     if (stMain) stMain.style.display = 'none';
+
+    // Connect socket NOW (after auth) so the previous device's kick
+    // does not also kick this new authenticated device
+    connectBucketSocket();
     
     // Now fetch the actual bucket storage info for the UI
     fetch(`${SERVER}/api/storage/validate/${token}`)
@@ -2140,9 +2144,15 @@ input[type=file]{display:none}
   }
   function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-  // Connect WebSocket
-  if (window.io && token) {
+  // ── WebSocket: connect ONLY after successful authentication ──────────────
+  // (connecting before auth would put the new device in the room and it would
+  //  receive its own bucket_session_invalidated kick that was meant for the
+  //  previous device)
+  function connectBucketSocket() {
+    if (!window.io || !token) return;
+    if (window._bucketSocket && window._bucketSocket.connected) return; // already connected
     const socket = window.io({ auth: { type: 'bucket', token: token } });
+    window._bucketSocket = socket;
     socket.on('db_changed', () => {
       loadFiles();
     });
@@ -2161,7 +2171,10 @@ input[type=file]{display:none}
     socket.on('bucket_session_invalidated', payload => {
       bucketSessionRestricted = true;
       try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}
-      showInvalid(payload?.message || 'Logged out: Your upload portal was accessed from another device.');
+      showToast(payload?.message || 'Logged out: Your upload portal was accessed from another device.', 'warn');
+      setTimeout(() => {
+        showInvalid(payload?.message || 'Logged out: Your upload portal was accessed from another device.');
+      }, 2500);
       socket.disconnect();
     });
     socket.on('disconnect', () => {
