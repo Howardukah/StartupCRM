@@ -1030,7 +1030,7 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
       const socket = window.io({ auth: { token: sessionToken } });
       socket.on('db_changed', () => {
         fetchAllProjects();
-        if (activeProjectId) loadProjectAssets(activeProjectId, activeNameEl.textContent);
+        if (activeProjectId) loadProjectAssets(activeProjectId, activeNameEl.textContent, true);
       });
       // Real-time quota update — no refresh needed
       socket.on('bucket_quota_updated', (payload) => {
@@ -1060,7 +1060,6 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
         statePick.style.display = 'flex';
         statePick.querySelector('h3').textContent = 'No Projects Assigned';
         statePick.querySelector('p').textContent = "You haven't been added to any projects yet. Contact your admin.";
-      }
     }
   }
 
@@ -1100,11 +1099,13 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
   }
 
   // ── Load assets for a project ──
-  async function loadProjectAssets(projectId, projectName) {
+  async function loadProjectAssets(projectId, projectName, quiet = false) {
     activeProjectId = projectId;
-    stateLoading.style.display = 'flex';
-    statePick.style.display = 'none';
-    projectView.style.display = 'none';
+    if (!quiet) {
+      stateLoading.style.display = 'flex';
+      statePick.style.display = 'none';
+      projectView.style.display = 'none';
+    }
 
     // Highlight sidebar item
     document.querySelectorAll('.project-item').forEach(el => el.classList.remove('active'));
@@ -1129,10 +1130,12 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
       projectView.style.display = 'flex';
       renderAssets(allAssets);
     } catch (err) {
-      stateLoading.style.display = 'none';
-      statePick.style.display = 'flex';
-      statePick.querySelector('h3').textContent = 'Access Denied';
-      statePick.querySelector('p').textContent = err.message;
+      if (!quiet) {
+        stateLoading.style.display = 'none';
+        statePick.style.display = 'flex';
+        statePick.querySelector('h3').textContent = 'Access Denied';
+        statePick.querySelector('p').textContent = err.message;
+      }
     }
   }
 
@@ -1242,7 +1245,6 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
       const onBackdrop = (e) => { if (e.target === confirmBackdrop) cleanup(false); };
       const onKey = (e) => { if (e.key === 'Escape') cleanup(false); };
       confirmOkBtn.addEventListener('click', onOk);
-      confirmCancelBtn.addEventListener('click', onCancel);
       confirmBackdrop.addEventListener('click', onBackdrop);
       document.addEventListener('keydown', onKey);
     });
@@ -1270,7 +1272,7 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
       if (!r.ok) throw new Error();
     } catch { 
       showSlideNotification('Delete failed', 'Could not delete the file. Please try again later.', 'error');
-      loadProjectAssets(activeProjectId, activeNameEl.textContent); // Revert state
+      loadProjectAssets(activeProjectId, activeNameEl.textContent, true);
     }
   };
 

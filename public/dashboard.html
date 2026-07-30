@@ -19236,7 +19236,7 @@
         if (!res.ok) throw new Error(res.error || 'Failed to regenerate link.');
 
         showToast('Link and passcode regenerated. Client has been emailed.', 'success');
-        await fetchCrmData();
+        if (typeof reloadDBFromDisk === 'function') await reloadDBFromDisk();
         renderAssetBuckets();
       } catch (e) {
         showToast(e.message, 'error');
@@ -19266,7 +19266,15 @@
               const res = await apiFetch(`/api/asset-buckets/${bucketId}/quota`, { method: 'POST', body: JSON.stringify({ quotaMB }) });
               if (res.ok) {
                 showToast(`Quota updated to ${quotaMB} MB.`, 'success');
-                await fetchCrmData();
+                const b = _cachedAssetBuckets ? _cachedAssetBuckets.find(x => x.id === bucketId) : null;
+                if (b && b.project_id) {
+                  const p = (db.projects || []).find(proj => proj.id === b.project_id);
+                  if (p) {
+                    if (!p.assetBucketConfig) p.assetBucketConfig = {};
+                    p.assetBucketConfig.customQuotaBytes = res.quotaBytes || (quotaMB * 1024 * 1024);
+                  }
+                }
+                if (typeof reloadDBFromDisk === 'function') reloadDBFromDisk();
               } else {
                 showToast(res.error || 'Error saving quota', 'error');
                 // Restore button on error so user can retry
@@ -19492,7 +19500,15 @@
           const res = await apiFetch(`/api/asset-buckets/${bucketId}/quota`, { method: 'POST', body: JSON.stringify({ quotaMB }) });
           if (res.ok) {
             showToast(`Quota updated to ${quotaMB} MB.`, 'success');
-            await fetchCrmData();
+            const b = _cachedAssetBuckets ? _cachedAssetBuckets.find(x => x.id === bucketId) : null;
+            if (b && b.project_id) {
+              const p = (db.projects || []).find(proj => proj.id === b.project_id);
+              if (p) {
+                if (!p.assetBucketConfig) p.assetBucketConfig = {};
+                p.assetBucketConfig.customQuotaBytes = res.quotaBytes || (quotaMB * 1024 * 1024);
+              }
+            }
+            if (typeof reloadDBFromDisk === 'function') reloadDBFromDisk();
             renderAssetBuckets();
             modal.classList.remove('is-open');
           } else {

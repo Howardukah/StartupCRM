@@ -3896,6 +3896,16 @@ async function getBucketByToken(token) {
   return promise;
 }
 
+function invalidateBucketCache(token) {
+  if (token) {
+    bucketTokenCache.delete(token);
+    bucketTokenPromises.delete(token);
+  } else {
+    bucketTokenCache.clear();
+    bucketTokenPromises.clear();
+  }
+}
+
 const assetCache = new Map();
 const assetPromiseCache = new Map();
 
@@ -4584,6 +4594,7 @@ app.post('/api/projects/:projectId/asset-buckets/:bucketId/send-invite', validat
 });
 
 function restrictActiveAssetBucketSessions(bucketId, message = 'This upload link has been restricted. Please contact your project manager.') {
+  invalidateBucketCache();
   const room = 'asset-bucket:' + bucketId;
   io.to(room).emit('bucket_restricted', { message });
   // Give connected clients a moment to show the restricted screen, then close
@@ -4630,6 +4641,7 @@ app.post('/api/asset-buckets/:bucketId/revoke', validateSession, async (req, res
       .update({ revoked })
       .eq('id', req.params.bucketId);
     if (error) throw new Error(error.message);
+    invalidateBucketCache();
     if (revoked) restrictActiveAssetBucketSessions(req.params.bucketId);
 
     res.json({ ok: true, revoked });
@@ -4727,6 +4739,7 @@ app.post('/api/asset-buckets/:bucketId/regenerate', validateSession, async (req,
       .update({ token: newToken, secret_key: secretKeyHash, revoked: false })
       .eq('id', bucket.id);
     if (updateError) throw new Error(updateError.message);
+    invalidateBucketCache();
 
     // Update crmData if there's a hyperlinkAssets entry
     const project = (crmData.projects || []).find(p => p.id === bucket.project_id);
