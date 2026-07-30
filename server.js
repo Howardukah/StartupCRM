@@ -5016,6 +5016,24 @@ app.post('/api/asset-bucket/auth/:token', bucketAuthLimiter, async (req, res) =>
       if (project) {
         project.assetBucketConfig.failedLoginCount = (project.assetBucketConfig.failedLoginCount || 0) + 1;
         await setCrmData(crmData);
+
+        if (project.assetBucketConfig.failedLoginCount >= 10) {
+          await supabase.from('asset_buckets').update({ revoked: true }).eq('id', bucket.id);
+          invalidateBucketCache();
+          restrictActiveAssetBucketSessions(bucket.id, 'Upload link restricted after 10 consecutive failed login attempts.');
+          appendActivity(makeActivityEntry(req, {
+            actorType: 'system',
+            action: 'security.brute_force_detected',
+            targetType: 'asset_bucket',
+            targetId: bucket.id,
+            targetName: project.name || bucket.project_id,
+            text: `System restricted upload link for ${project.name || bucket.project_id} due to 10 consecutive failed login attempts from IP ${requestIp(req)}.`,
+          })).catch(() => {});
+          return res.status(403).json({ ok: false, error: 'This upload link has been restricted due to 10 consecutive failed login attempts. Please contact your project manager.' });
+        }
+
+        const remaining = 10 - project.assetBucketConfig.failedLoginCount;
+        return res.status(401).json({ ok: false, error: `Incorrect access key. (${remaining} attempt${remaining > 1 ? 's' : ''} remaining before link lockout)` });
       }
       return res.status(401).json({ ok: false, error: 'Incorrect access key. Please check and try again.' });
     }
@@ -5024,8 +5042,6 @@ app.post('/api/asset-bucket/auth/:token', bucketAuthLimiter, async (req, res) =>
     const customQuota = project?.assetBucketConfig?.customQuotaBytes;
     const quotaBytes = customQuota ? parseInt(customQuota) : CLIENT_QUOTA_BYTES;
     const reqIp = requestIp(req);
-    const reqSubnet = normalizeIpSubnet(reqIp);
-    const lastSubnet = normalizeIpSubnet(cfg.lastIp);
 
     // 1.1 First-time login: check if security question is set
     const hasSecurity = !!(cfg.securityQuestion && cfg.securityAnswerHash);
@@ -5039,50 +5055,27 @@ app.post('/api/asset-bucket/auth/:token', bucketAuthLimiter, async (req, res) =>
       });
     }
 
-    // 1.2 Definition of "suspicious login"
+    // 1.2 Require security verification if there were 3 or more failed key attempts prior to this successful entry
     const failedCount = cfg.failedLoginCount || 0;
-    const toggleCount = cfg.toggleCountDuringFailed || 0;
+    const requiresSecVerify = failedCount >= 3;
 
-    const triggerA = failedCount >= 5;
-    const triggerB = failedCount >= 10 && toggleCount > 0;
-    const triggerC = !!(lastSubnet && reqSubnet !== lastSubnet);
-    const isSuspicious = triggerA || triggerB || triggerC;
-
-    if (isSuspicious) {
-      if (triggerC) {
-        const clientEmail = project?.contactEmail || project?.clientEmail || process.env.SUPPORT_EMAIL || 'support@startupbuild.tech';
-        sendMailWithFallback({
-          from: `"${process.env.SMTP_FROM_NAME || 'Startup CRM'}" <${process.env.SMTP_USER || 'noreply@startupbuild.tech'}>`,
-          to: clientEmail,
-          subject: `⚠️ Security Alert: New login detected on ${projectName} asset portal`,
-          html: `<div style="font-family:Arial,sans-serif;padding:20px;background:#f7f7f9;">
-            <h2 style="color:#d9534f;">⚠️ New Login / Device Detected</h2>
-            <p>A login to the <strong>${projectName}</strong> asset portal was detected from a new IP address or device.</p>
-            <p><strong>Approx. Time:</strong> ${new Date().toUTCString()}</p>
-            <p><strong>IP Address:</strong> ${reqIp}</p>
-            <p><strong>Device:</strong> ${requestUserAgent(req)}</p>
-            <p>If this was you, please verify your security question on screen. If you did not authorize this, contact support immediately.</p>
-          </div>`
-        }).catch(e => console.warn('Security email alert failed:', e.message));
-      }
-
-      appendActivity(makeActivityEntry(req, {
-        actorType: 'system',
-        action: 'security.suspicious_login_detected',
-        targetType: 'asset_bucket',
-        targetId: bucket.id,
-        targetName: projectName,
-        text: `Suspicious login detected on ${projectName} bucket (Trigger: ${triggerA ? '5+ failed attempts' : triggerB ? '10+ failed + toggled' : 'IP subnet change'}). Security question required.`,
-        metadata: { projectId: bucket.project_id, ip: reqIp, triggerA, triggerB, triggerC }
-      })).catch(() => {});
-
+    if (requiresSecVerify) {
       return res.json({
         ok: true,
         step: 'verify_security_question',
-        question: cfg.securityQuestion,
-        attemptsLeft: Math.max(1, 3 - (cfg.secAttemptsCount || 0)),
-        reason: 'suspicious_login'
+        bucketId: bucket.id,
+        projectId: bucket.project_id,
+        projectName,
+        attemptsLeft: Math.max(1, 3 - (cfg.secAttemptsCount || 0))
       });
+    }
+
+    // Successful normal login: clear failed count and update last IP
+    if (project) {
+      project.assetBucketConfig.failedLoginCount = 0;
+      project.assetBucketConfig.toggleCountDuringFailed = 0;
+      project.assetBucketConfig.lastIp = reqIp;
+      await setCrmData(crmData);
     }
 
     // Normal trusted login

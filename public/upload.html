@@ -1451,10 +1451,22 @@ input[type=file]{display:none}
   }
   window.submitSecuritySetup = submitSecuritySetup;
 
+  function toggleVerifyCustomQ(selectEl) {
+    const customWrap = document.getElementById('sec-verify-custom-q-wrap');
+    if (customWrap) {
+      customWrap.style.display = selectEl.value === '__custom__' ? 'block' : 'none';
+    }
+  }
+  window.toggleVerifyCustomQ = toggleVerifyCustomQ;
+
   async function submitSecurityVerify() {
+    const selectEl = document.getElementById('sec-verify-q-select');
+    const customQInput = document.getElementById('sec-verify-custom-q');
     const answerInput = document.getElementById('sec-verify-answer');
     const errEl = document.getElementById('sec-verify-error');
     const btn = document.getElementById('sec-verify-btn');
+
+    let question = selectEl ? (selectEl.value === '__custom__' ? (customQInput.value || '').trim() : selectEl.value) : '';
     let answer = (answerInput.value || '').trim();
 
     if (!answer) {
@@ -1470,7 +1482,7 @@ input[type=file]{display:none}
       const res = await fetch(SERVER + '/api/asset-bucket/verify-security/' + bucketToken, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ secretKey: enteredKey, answer }),
+        body: JSON.stringify({ secretKey: enteredKey, question, answer }),
       });
       const data = await res.json().catch(() => ({}));
 
