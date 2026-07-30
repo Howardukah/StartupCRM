@@ -765,6 +765,11 @@ input[type=file]{display:none}
       box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
     }
 
+    .key-input:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
     .auth-btn {
       width: 100%;
       padding: 14px;
@@ -1483,18 +1488,20 @@ input[type=file]{display:none}
   });
 
   async function submitKey() {
-    const rawVal = document.getElementById('key-input').value || '';
+    const keyInputEl = document.getElementById('key-input');
+    const rawVal = keyInputEl.value || '';
     const key = rawVal.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     const errEl = document.getElementById('auth-error');
     const btn = document.getElementById('auth-btn');
 
     if (!key || key.length < 5) {
       errEl.textContent = 'Please enter your full 5-character access key.';
-      document.getElementById('key-input').classList.add('error');
+      keyInputEl.classList.add('error');
       return;
     }
 
     btn.disabled = true;
+    keyInputEl.disabled = true;
     btn.textContent = 'Verifying...';
     errEl.textContent = '';
 
@@ -1507,9 +1514,10 @@ input[type=file]{display:none}
       const data = await res.json().catch(() => ({}));
 
       if (res.status === 429) {
-        document.getElementById('key-input').classList.add('error');
+        keyInputEl.classList.add('error');
         errEl.textContent = data.error || data.message || 'Too many attempts. Your IP has been temporarily restricted for 15 minutes.';
         btn.disabled = false;
+        keyInputEl.disabled = false;
         btn.textContent = 'Verify Key';
         return;
       }
@@ -1521,9 +1529,11 @@ input[type=file]{display:none}
       }
 
       if (!res.ok || !data.ok) {
-        document.getElementById('key-input').classList.add('error');
+        keyInputEl.classList.add('error');
         errEl.textContent = data.error || data.message || 'Incorrect key. Please try again.';
         btn.disabled = false;
+        keyInputEl.disabled = false;
+        keyInputEl.focus();
         btn.textContent = 'Verify Key';
         return;
       }
@@ -1551,6 +1561,8 @@ input[type=file]{display:none}
     } catch (e) {
       errEl.textContent = 'Could not connect. Please try again.';
       btn.disabled = false;
+      keyInputEl.disabled = false;
+      keyInputEl.focus();
       btn.textContent = 'Verify Key';
     }
   }
