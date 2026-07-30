@@ -1907,8 +1907,15 @@ input[type=file]{display:none}
   }
 
   // ── Upload ───────────────────────────────────────────────────────────────
+  let stagedUploadFiles = [];
+
   async function uploadFiles(files) {
     if (uploading) { showToast('Please wait for the current upload to finish.', 'warn'); return; }
+
+    if (files && files.length) stagedUploadFiles = files;
+    if (!stagedUploadFiles || !stagedUploadFiles.length) return;
+
+    uploading = true;
 
     // Show upload progress UI
     const progBar  = document.getElementById('upload-progress-bar');
@@ -1920,7 +1927,7 @@ input[type=file]{display:none}
     const pName = (bucketInfo.projectName || projectInfo?.projectName || 'Project').replace(/\s+/g, '');
     let startIndex = (allFiles.filter(f => !f._pending).length || 0) + 1;
     
-    const filesWithNewNames = files.map((f, i) => {
+    const filesWithNewNames = stagedUploadFiles.map((f, i) => {
       const nameParts = f.name.split('.');
       const ext = nameParts.length > 1 ? '.' + nameParts.pop() : '';
       return { file: f, newName: `${pName}Asset${startIndex + i}${ext}` };
@@ -1928,52 +1935,112 @@ input[type=file]{display:none}
 
     // Add pending ghost cards to grid
     const ghosts = filesWithNewNames.map(({ file, newName }) => ({ id: '__pending__' + Math.random(), filename: newName, size_bytes: file.size, content_type: file.type, _pending: true, _file: file }));
-    allFiles = [...ghosts, ...allFiles];
+    allFiles = [...ghosts, ...allFiles.filter(f => !f._pending)];
     render(allFiles);
 
-    try {
-      const fd = new FormData();
-      fd.append('clientName', cName);
-      filesWithNewNames.forEach(({ file, newName }) => fd.append('files', file, newName));
+    const performXhrUpload = () => {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        const fd = new FormData();
+        fd.append('clientName', cName);
+        filesWithNewNames.forEach(({ file, newName }) => fd.append('files', file, newName));
 
-      // Fake progress animation
-      let prog = 10;
-      const timer = setInterval(() => {
-        prog = Math.min(prog + 8, 85);
-        progFill.style.width = prog + '%';
-      }, 300);
+        let stallTimer = null;
+        const resetStallTimer = () => {
+          if (stallTimer) clearTimeout(stallTimer);
+          stallTimer = setTimeout(() => {
+            xhr.abort();
+            reject(new Error('UPLOAD_STALLED'));
+          }, 60000); // 60s stall timeout
+        };
 
-      const r = await fetch(`${SERVER}/api/storage/upload/${token}`, { method: 'POST', body: fd });
-      clearInterval(timer);
-      progFill.style.width = '100%';
+        resetStallTimer();
 
-      const res = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        if (r.status === 429) {
-          showToast('⚠️ Rate limit exceeded (max 20 uploads/min). Please wait a minute before uploading.', 'error');
-        } else if (r.status === 403) {
-          showToast('⛔ Upload denied. Link restricted.', 'error');
-          try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}
-          showInvalid('This upload link has been restricted. Please contact your project manager.');
-        } else if (res.quotaExceeded) {
-          showToast('❌ Storage quota exceeded. Some files may not have uploaded.', 'error');
-        } else {
-          throw new Error(res.error || res.message || 'Upload failed.');
+        xhr.upload.onprogress = (e) => {
+          resetStallTimer();
+          if (e.lengthComputable && e.total > 0) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            progFill.style.width = percent + '%';
+          }
+        };
+
+        xhr.onload = () => {
+          if (stallTimer) clearTimeout(stallTimer);
+          let res = {};
+          try { res = JSON.parse(xhr.responseText); } catch(e) {}
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(res);
+          } else {
+            resolve({ errorStatus: xhr.status, res });
+          }
+        };
+
+        xhr.onerror = () => {
+          if (stallTimer) clearTimeout(stallTimer);
+          reject(new Error('NETWORK_ERROR'));
+        };
+
+        xhr.onabort = () => {
+          if (stallTimer) clearTimeout(stallTimer);
+          reject(new Error('UPLOAD_STALLED'));
+        };
+
+        xhr.open('POST', `${SERVER}/api/storage/upload/${token}`, true);
+        xhr.send(fd);
+      });
+    };
+
+    const maxRetries = 3;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await performXhrUpload();
+        if (result && result.errorStatus) {
+          const status = result.errorStatus;
+          const res = result.res || {};
+          if (status === 429) {
+            showToast('⚠️ Rate limit exceeded (max 20 uploads/min). Please wait a minute before uploading.', 'error');
+          } else if (status === 403) {
+            showToast('⛔ Upload denied. Link restricted.', 'error');
+            try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}
+            showInvalid('This upload link has been restricted. Please contact your project manager.');
+          } else if (res.quotaExceeded) {
+            showToast('❌ Storage quota exceeded. Some files may not have uploaded.', 'error');
+          } else {
+            showToast(res.error || res.message || 'Upload failed.', 'error');
+          }
+          break; // Server rejection — stop retrying
         }
-      } else {
-        usedBytes = res.usedBytes || usedBytes;
-        quotaBytes = res.quotaBytes || quotaBytes;
+
+        // Upload successful!
+        usedBytes = result.usedBytes || usedBytes;
+        quotaBytes = result.quotaBytes || quotaBytes;
         updateStorage(usedBytes, quotaBytes);
-        showToast(`✅ ${files.length} file${files.length>1?'s':''} uploaded successfully.`, 'success');
+        showToast(`✅ ${stagedUploadFiles.length} file${stagedUploadFiles.length>1?'s':''} uploaded successfully.`, 'success');
+        stagedUploadFiles = []; // Clear queue on success
+        break;
+      } catch (err) {
+        if (attempt < maxRetries) {
+          showToast(`Network drop detected. Retrying upload (attempt ${attempt + 1}/${maxRetries})...`, 'warn');
+          await new Promise(r => setTimeout(r, attempt * 1500));
+        } else {
+          showToast('Upload failed due to connection issues. Your files remain staged — retry when connected.', 'error');
+        }
       }
-    } catch (err) {
-      showToast(formatUserFriendlyError(err, 'Upload failed. Please try again.'), 'error');
-    } finally {
-      uploading = false;
-      progBar.style.display = 'none';
-      await loadFiles();
     }
+
+    uploading = false;
+    progBar.style.display = 'none';
+    await loadFiles();
   }
+
+  window.retryStagedUpload = function() {
+    if (stagedUploadFiles && stagedUploadFiles.length) {
+      uploadFiles(stagedUploadFiles);
+    } else {
+      showToast('No staged files to retry.', 'info');
+    }
+  };
 
   // ── Load files from server ───────────────────────────────────────────────
   async function loadFiles() {

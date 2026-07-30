@@ -84,7 +84,8 @@ app.post('/api/auth/login', async (req, res) => {
     const bcrypt = await import('bcryptjs');
     passwordOk = await bcrypt.default.compare(password || '', member.password || '');
   } catch (e) {
-    passwordOk = password === 'test1234';
+    console.error('Bcrypt error in server-local.js:', e);
+    return res.status(500).json({ error: 'Authentication engine error.' });
   }
   if (!passwordOk) return res.status(401).json({ error: 'Incorrect credentials. Check login credentials and try again.' });
   if (member.mustChangePassword) return res.json({ ok: true, mustChangePassword: true, userId: member.id });
@@ -147,4 +148,5 @@ await loadDb();
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`Local CRM running at http://127.0.0.1:${PORT}`);
   console.log(`Login at http://127.0.0.1:${PORT}/index.html`);
+  console.warn('⚠️ Running WITHOUT production security features — do not use for security testing.');
 });

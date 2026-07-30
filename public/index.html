@@ -1901,10 +1901,11 @@
     /* ============ STATE ============ */
     let db = null;
     const EMPTY_DB = { team: [], clients: [], meetings: [], projects: [], activity: [], messages: [], chatGroups: [], notifications: [] };
-    let pendingMustChangePwUserId = null;
     let pendingSessionToken = null;
     let pendingUserId = null;
+    let pendingMustChangePwUserId = null;
     let pendingSecurityUserId = null;
+    let pendingChallengeToken = null;
     const API_BASE = ''; // Same-origin: frontend and backend served from the same server
 
     function showStep(name) {
@@ -2042,6 +2043,7 @@
         }
         if (data.securityQuestionRequired) {
           pendingSecurityUserId = data.userId;
+          pendingChallengeToken = data.challengeToken;
           document.getElementById('challenge-security-question').value = '';
           document.getElementById('cs-challenge-question-display').textContent = 'Select your security question';
           document.getElementById('cs-challenge-question-display').classList.add('placeholder');
@@ -2234,7 +2236,12 @@
         const res = await fetch(API_BASE + '/api/auth/verify-security-question', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: pendingSecurityUserId, securityQuestion: question, securityAnswer: answer })
+          body: JSON.stringify({
+            userId: pendingSecurityUserId,
+            challengeToken: pendingChallengeToken,
+            securityQuestion: question,
+            securityAnswer: answer
+          })
         });
         const data = await res.json();
         if (!res.ok) {

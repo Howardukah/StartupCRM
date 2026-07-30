@@ -11295,9 +11295,14 @@
       if (!token) return;
       if (!_socket) {
         _socket = io({ auth: { token } });
-        _socket.on('reconnect', () => {
-          if (typeof recoverConnection === 'function') recoverConnection();
-        });
+        if (_socket && _socket.io) {
+          _socket.io.on('reconnect', () => {
+            if (typeof recoverConnection === 'function') recoverConnection();
+          });
+          _socket.io.on('reconnect_attempt', () => {
+            if (typeof _setSaveIndicator === 'function') _setSaveIndicator('reconnecting');
+          });
+        }
         _socket.on('user_session_invalidated', (data) => {
           if (data && data.userId === currentUserId) {
             showDashboardSessionLogoutAlert(data.message || 'Your account was logged into from another device. For security reasons, your active session on this device has been ended.');
@@ -13496,7 +13501,9 @@
 
     function addNotification(userId, text, projectId, meta) {
       db.notifications = db.notifications || [];
-      db.notifications.push({ id: uid('notif'), userId, text, projectId: projectId || null, time: now(), read: false, meta: meta || null });
+      const notif = { id: uid('notif'), userId, text, projectId: projectId || null, time: now(), read: false, meta: meta || null };
+      db.notifications.push(notif);
+      apiFetch('/api/notifications', { method: 'POST', body: JSON.stringify({ notification: notif }) }).catch(() => {});
     }
 
     let _expandedNotifGroups = new Set(['chat', 'tasks', 'mail', 'system']);
@@ -15950,8 +15957,9 @@
       };
       db.chatGroups = db.chatGroups || [];
       db.chatGroups.push(group);
+      apiFetch('/api/chat-groups', { method: 'POST', body: JSON.stringify({ chatGroup: group }) }).catch(() => {});
       logActivity('created chat group ' + trimmed);
-      persistAndRender([renderChat, renderOverview]);
+      persistAndRender([renderChat, renderOverview], { save: false });
       openChat(groupChatWindowId(group.id));
       const win = findChatWindow(groupChatWindowId(group.id));
       if (win) {
@@ -15970,8 +15978,9 @@
       const memberId = select && select.value;
       if (!memberId) return;
       if (!group.memberIds.includes(memberId)) group.memberIds.push(memberId);
+      apiFetch('/api/chat-groups/' + groupId, { method: 'PATCH', body: JSON.stringify({ chatGroup: group }) }).catch(() => {});
       addNotification(memberId, 'You were added to chat group "' + group.name + '".', null, { type: 'chat-group', chatId: groupChatWindowId(groupId) });
-      persistAndRender([renderChat, renderNotifications]);
+      persistAndRender([renderChat, renderNotifications], { save: false });
       showToast('Member added to group.', 'success');
     }
 
@@ -15997,7 +16006,8 @@
         group.memberIds.push(memberId);
         addNotification(memberId, 'You were added to chat group "' + group.name + '".', null, { type: 'chat-group', chatId: groupChatWindowId(groupId) });
       });
-      persistAndRender([renderChat, renderNotifications]);
+      apiFetch('/api/chat-groups/' + groupId, { method: 'PATCH', body: JSON.stringify({ chatGroup: group }) }).catch(() => {});
+      persistAndRender([renderChat, renderNotifications], { save: false });
       showToast(ids.length + ' member' + (ids.length === 1 ? '' : 's') + ' added to group.', 'success');
     }
 
@@ -16008,7 +16018,6 @@
         win.maximized = false;
       }
       renderChat();
-      t
     }
 
     async function removeGroupMember(groupId, memberId) {
@@ -16020,8 +16029,9 @@
       if (!ok) return;
       group.memberIds = (group.memberIds || []).filter(id => id !== memberId);
       group.adminIds = (group.adminIds || []).filter(id => id !== memberId);
+      apiFetch('/api/chat-groups/' + groupId, { method: 'PATCH', body: JSON.stringify({ chatGroup: group }) }).catch(() => {});
       addNotification(memberId, 'You were removed from chat group "' + group.name + '".', null, { type: 'chat-group', chatId: groupChatWindowId(groupId) });
-      persistAndRender([renderChat, renderNotifications]);
+      persistAndRender([renderChat, renderNotifications], { save: false });
       showToast('Member removed from group.', 'success');
     }
 
@@ -16032,8 +16042,9 @@
       group.adminIds = group.adminIds || [];
       if (!group.adminIds.includes(memberId)) group.adminIds.push(memberId);
       const member = getMember(memberId);
+      apiFetch('/api/chat-groups/' + groupId, { method: 'PATCH', body: JSON.stringify({ chatGroup: group }) }).catch(() => {});
       addNotification(memberId, 'You are now an admin of chat group "' + group.name + '".', null, { type: 'chat-group', chatId: groupChatWindowId(groupId) });
-      persistAndRender([renderChat, renderNotifications]);
+      persistAndRender([renderChat, renderNotifications], { save: false });
       showToast((member ? member.name : 'Member') + ' is now a group admin.', 'success');
     }
 

@@ -88,6 +88,9 @@ app.use(express.json({
 // access to server.js, package.json, .env, and any other server-side files.
 const PUBLIC_DIR = path.join(path.resolve('.'), 'public');
 
+process.on('unhandledRejection', (reason) => console.error('Unhandled rejection:', reason));
+process.on('uncaughtException', (err) => console.error('Uncaught exception:', err));
+
 // Belt-and-suspenders block for sensitive files in case they somehow end up
 // accessible via another route (e.g. during local dev without a public/ dir).
 const NEVER_SERVE = new Set([
@@ -573,6 +576,40 @@ function verifyToken(token) {
     if (Date.now() > data.expiresAt) return null;
     return data;
   } catch { return null; }
+}
+
+/* ── Security Challenge Tokens (single-use, 5min expiry) ────────────────── */
+const consumedChallengeTokens = new Set();
+
+function signChallengeToken(userId) {
+  const nonce = crypto.randomUUID();
+  const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+  const payload = Buffer.from(JSON.stringify({ userId, nonce, expiresAt, type: 'sec_challenge' })).toString('base64url');
+  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+  return `${payload}.${sig}`;
+}
+
+function verifyAndConsumeChallengeToken(token, expectedUserId) {
+  if (!token || typeof token !== 'string') return false;
+  if (consumedChallengeTokens.has(token)) return false; // Already replayed/consumed
+  const dot = token.lastIndexOf('.');
+  if (dot < 0) return false;
+  const payload = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const expected = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+  if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    if (data.type !== 'sec_challenge' || !data.userId || !data.expiresAt || !data.nonce) return false;
+    if (data.userId !== expectedUserId) return false;
+    if (Date.now() > data.expiresAt) return false;
+    // Mark as consumed immediately
+    consumedChallengeTokens.add(token);
+    setTimeout(() => consumedChallengeTokens.delete(token), 10 * 60 * 1000);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Keep a small in-memory sessions Map ONLY for real-time revocation lookups
@@ -1120,9 +1157,29 @@ app.post('/api/auth/login', async (req, res) => {
       }
     }
 
-    if (member.suspiciousLoginAttempt && member.securityQuestion) {
-      // Don't clear attempts here — they're cleared after security question passes
-      return res.json({ ok: true, securityQuestionRequired: true, userId: member.id });
+    if (member.suspiciousLoginAttempt) {
+      if (!member.securityQuestion) {
+        // Backstop for legacy accounts lacking a security question: force profile setup
+        member.profileSetupRequired = true;
+        await setCrmData(data);
+        const token = signToken(member.id, Date.now() + 86400000, true);
+        return res.json({
+          ok: true,
+          token,
+          userId: member.id,
+          profileSetupRequired: true,
+          user: { name: member.name || '', personalEmail: member.personalEmail || '' }
+        });
+      }
+      // Generate short-lived single-use challenge token tied to this member and login attempt
+      const challengeToken = signChallengeToken(member.id);
+      return res.json({
+        ok: true,
+        securityQuestionRequired: true,
+        userId: member.id,
+        challengeToken,
+        securityQuestion: member.securityQuestion
+      });
     }
 
     // Successful login — clear rate-limit records
@@ -1165,9 +1222,9 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.post('/api/auth/verify-security-question', async (req, res) => {
   try {
-    const { userId, securityQuestion, securityAnswer } = req.body || {};
-    if (!userId || !securityQuestion || !securityAnswer) {
-      return res.status(400).json({ error: 'User ID, security question, and security answer are required.' });
+    const { userId, challengeToken, securityQuestion, securityAnswer } = req.body || {};
+    if (!userId || !challengeToken || !securityQuestion || !securityAnswer) {
+      return res.status(400).json({ error: 'User ID, challenge token, security question, and security answer are required.' });
     }
 
     const submittedNorm = normalizeLoginEmail(userId);
@@ -1188,6 +1245,14 @@ app.post('/api/auth/verify-security-question', async (req, res) => {
     }
 
     const member = data.team[memberIndex];
+
+    // Validate and consume single-use challenge token (prevents replay/bypass attacks)
+    const isChallengeValid = verifyAndConsumeChallengeToken(challengeToken, member.id);
+    if (!isChallengeValid) {
+      await Promise.all([recordFailure(emailKey), recordFailure(ipKey)]);
+      return res.status(401).json({ error: 'Invalid, expired, or consumed security challenge token. Please log in again.' });
+    }
+
     if (!member.securityQuestion || !member.securityAnswer) {
       return res.status(400).json({ error: 'Security question not configured for this user.' });
     }
@@ -1516,6 +1581,87 @@ app.post('/api/db', validateSession, async (req, res) => {
     console.error(e);
     res.status(500).json({ error: e.message });
   }
+});
+
+/* ============ PER-RECORD ATOMIC CRUD ENDPOINTS FOR SHARED COLLECTIONS ============ */
+const PER_RECORD_COLLECTIONS = [
+  { key: 'clients', route: 'clients' },
+  { key: 'projects', route: 'projects' },
+  { key: 'chatGroups', route: 'chat-groups' },
+  { key: 'notifications', route: 'notifications' }
+];
+
+PER_RECORD_COLLECTIONS.forEach(({ key, route }) => {
+  // POST /api/:route - Add single record
+  app.post(`/api/${route}`, validateSession, async (req, res) => {
+    try {
+      const incoming = req.body || {};
+      const item = incoming[key.slice(0, -1)] || incoming.item || incoming;
+      if (!item || typeof item !== 'object') return res.status(400).json({ error: 'Invalid record data.' });
+
+      let resultItem = null;
+      await withCrmWriteLock(async () => {
+        const data = await getCrmData();
+        data[key] = data[key] || [];
+        if (!item.id) item.id = uid(key.slice(0, 3));
+        item.created = item.created || Date.now();
+        data[key].push(item);
+        resultItem = item;
+        await setCrmData(data);
+        io.emit('db_changed', { type: key, action: 'create', id: item.id });
+      });
+      res.json({ ok: true, item: resultItem });
+    } catch (e) {
+      console.error(`POST /api/${route} error:`, e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // PATCH & PUT /api/:route/:id - Update single record
+  const handleUpdate = async (req, res) => {
+    try {
+      const id = req.params.id;
+      const incoming = req.body || {};
+      const patch = incoming[key.slice(0, -1)] || incoming.item || incoming;
+      let updatedItem = null;
+
+      await withCrmWriteLock(async () => {
+        const data = await getCrmData();
+        const list = data[key] || [];
+        const idx = list.findIndex(i => String(i && i.id) === String(id));
+        if (idx === -1) {
+          throw new Error('Record not found.');
+        }
+        data[key][idx] = { ...data[key][idx], ...patch, id: data[key][idx].id };
+        updatedItem = data[key][idx];
+        await setCrmData(data);
+        io.emit('db_changed', { type: key, action: 'update', id });
+      });
+      res.json({ ok: true, item: updatedItem });
+    } catch (e) {
+      const isNotFound = e.message === 'Record not found.';
+      res.status(isNotFound ? 404 : 500).json({ error: e.message });
+    }
+  };
+  app.patch(`/api/${route}/:id`, validateSession, handleUpdate);
+  app.put(`/api/${route}/:id`, validateSession, handleUpdate);
+
+  // DELETE /api/:route/:id - Delete single record
+  app.delete(`/api/${route}/:id`, validateSession, async (req, res) => {
+    try {
+      const id = req.params.id;
+      await withCrmWriteLock(async () => {
+        const data = await getCrmData();
+        data[key] = (data[key] || []).filter(i => String(i && i.id) !== String(id));
+        await setCrmData(data);
+        io.emit('db_changed', { type: key, action: 'delete', id });
+      });
+      res.json({ ok: true, id });
+    } catch (e) {
+      console.error(`DELETE /api/${route}/:id error:`, e);
+      res.status(500).json({ error: e.message });
+    }
+  });
 });
 
 /* ============ ATOMIC GRANULAR DELETE ENDPOINTS ============ */
@@ -3697,10 +3843,32 @@ async function initB2() {
   console.log(`✅ Backblaze B2 Storage connected → ${B2_BUCKET}`);
 }
 
+const ALLOWED_UPLOAD_EXTENSIONS = new Set([
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico',
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'rtf', 'ppt', 'pptx',
+  'zip', 'rar', '7z', 'tar', 'gz',
+  'mp3', 'wav', 'ogg', 'mp4', 'avi', 'mov', 'mkv', 'webm'
+]);
+
+const DISALLOWED_UPLOAD_EXTENSIONS = new Set([
+  'html', 'htm', 'exe', 'bat', 'cmd', 'sh', 'js', 'php', 'py', 'vbs', 'phar', 'jar', 'asp', 'aspx', 'cgi', 'pl'
+]);
+
 // multer: store uploads in memory, then stream to B2 (nothing touches disk)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB per file hard cap
+  fileFilter: (req, file, cb) => {
+    const origName = String(file.originalname || '').toLowerCase();
+    const ext = origName.split('.').pop() || '';
+    if (DISALLOWED_UPLOAD_EXTENSIONS.has(ext)) {
+      return cb(new Error('File type not allowed.'), false);
+    }
+    if (!ALLOWED_UPLOAD_EXTENSIONS.has(ext)) {
+      return cb(new Error('File type not allowed.'), false);
+    }
+    cb(null, true);
+  }
 });
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
@@ -5436,6 +5604,12 @@ app.use((req, res) => {
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    SERVER STARTUP
    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+
+// Global Express error handling middleware — catches all unhandled route errors
+app.use((err, req, res, next) => {
+  console.error('Unhandled Express route error:', err);
+  res.status(500).json({ error: 'Internal server error.' });
+});
 
 const PORT = process.env.PORT || 8787;
 // Hosting platforms (Render, Railway, etc.) set NODE_ENV=production and
