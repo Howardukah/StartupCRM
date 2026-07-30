@@ -909,8 +909,8 @@ input[type=file]{display:none}
       box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75);
       z-index: 999;
       display: none;
-      max-height: 220px;
-      overflow-y: auto;
+      max-height: none;
+      overflow: visible;
       padding: 6px;
     }
     .custom-dropdown-menu.open {
@@ -1087,15 +1087,9 @@ input[type=file]{display:none}
           <div class="custom-dropdown-option" onclick="selectSecOption(this, 'What was the name of your first pet?')">What was the name of your first pet?</div>
           <div class="custom-dropdown-option" onclick="selectSecOption(this, 'In what city were you born?')">In what city were you born?</div>
           <div class="custom-dropdown-option" onclick="selectSecOption(this, 'What was the make of your first car?')">What was the make of your first car?</div>
-          <div class="custom-dropdown-option" onclick="selectSecOption(this, '__custom__')">Custom Question...</div>
         </div>
       </div>
       <input type="hidden" id="sec-setup-q-val" value="What was the name of your first school?">
-
-      <div id="sec-custom-q-wrap" style="display:none; margin-top: 12px;">
-        <div class="key-label">Custom Question</div>
-        <input type="text" id="sec-setup-custom-q" class="sec-input" placeholder="Type your custom question...">
-      </div>
 
       <div class="key-label" style="margin-top: 12px;">Your Answer</div>
       <input type="text" id="sec-setup-answer" class="sec-input" placeholder="Enter your answer...">
@@ -1125,15 +1119,9 @@ input[type=file]{display:none}
           <div class="custom-dropdown-option" onclick="selectSecOption(this, 'What was the name of your first pet?')">What was the name of your first pet?</div>
           <div class="custom-dropdown-option" onclick="selectSecOption(this, 'In what city were you born?')">In what city were you born?</div>
           <div class="custom-dropdown-option" onclick="selectSecOption(this, 'What was the make of your first car?')">What was the make of your first car?</div>
-          <div class="custom-dropdown-option" onclick="selectSecOption(this, '__custom__')">Custom Question...</div>
         </div>
       </div>
       <input type="hidden" id="sec-verify-q-val" value="What was the name of your first school?">
-
-      <div id="sec-verify-custom-q-wrap" style="display:none; margin-top: 12px;">
-        <div class="key-label">Custom Question</div>
-        <input type="text" id="sec-verify-custom-q" class="sec-input" placeholder="Type your custom question...">
-      </div>
 
       <div class="key-label" style="margin-top: 12px;">Your Answer</div>
       <input type="text" id="sec-verify-answer" class="sec-input" placeholder="Enter your answer...">
