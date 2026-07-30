@@ -11298,6 +11298,16 @@
         _socket.on('reconnect', () => {
           if (typeof recoverConnection === 'function') recoverConnection();
         });
+        _socket.on('user_session_invalidated', (data) => {
+          if (data && data.userId === currentUserId) {
+            if (typeof showToast === 'function') {
+              showToast(data.message || 'Logged out: Account accessed on another device.', 'warn');
+            }
+            setTimeout(() => {
+              if (typeof backToSignIn === 'function') backToSignIn();
+            }, 800);
+          }
+        });
         _socket.on('db_changed', (data) => {
           window._lastAssetCountsStr = '';
           if (typeof window.refreshProjectAssetCounts === 'function') {

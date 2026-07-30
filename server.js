@@ -1214,6 +1214,10 @@ app.post('/api/auth/verify-security-question', async (req, res) => {
     member.lastLoginIp = currentIp;
     await setCrmData(data);
 
+    // Invalidate existing sessions on other devices for this user
+    revokeSessionsForUsers([member.id]);
+    io.emit('user_session_invalidated', { userId: member.id, message: 'You have been logged out because your account was logged in from another device.' });
+
     const token = signToken(member.id, Date.now() + 86400000);
 
     await appendActivity(makeActivityEntry(req, {
@@ -5069,13 +5073,16 @@ app.post('/api/asset-bucket/auth/:token', bucketAuthLimiter, async (req, res) =>
       });
     }
 
-    // Successful normal login: clear failed count and update last IP
+    // Successful normal login: clear failed count, update last IP, and invalidate previous device sessions
     if (project) {
       project.assetBucketConfig.failedLoginCount = 0;
       project.assetBucketConfig.toggleCountDuringFailed = 0;
       project.assetBucketConfig.lastIp = reqIp;
       await setCrmData(crmData);
     }
+
+    const room = 'asset-bucket:' + bucket.id;
+    io.to(room).emit('bucket_session_invalidated', { message: 'Logged out: Your upload portal was accessed from another device.' });
 
     // Normal trusted login
     cfg.failedLoginCount = 0;
@@ -5187,6 +5194,9 @@ app.post('/api/asset-bucket/verify-security/:token', secVerifyLimiter, async (re
       cfg.secLockedUntil = null;
       cfg.lastIp = requestIp(req);
       await setCrmData(crmData);
+
+      const room = 'asset-bucket:' + bucket.id;
+      io.to(room).emit('bucket_session_invalidated', { message: 'Logged out: Your upload portal was accessed from another device.' });
 
       appendActivity(makeActivityEntry(req, {
         actorType: 'system',

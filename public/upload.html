@@ -1037,16 +1037,26 @@ input[type=file]{display:none}
     <div id="sec-verify-panel" style="display:none;">
       <div class="auth-panel-title">Security Verification</div>
       <div class="auth-panel-sub">
-        Suspicious activity or a new device login was detected. Please answer your security question to continue.
+        Suspicious activity or a new device login was detected. Please select and answer your security question to continue.
       </div>
 
-      <div class="key-label">Security Question</div>
-      <div id="sec-verify-q-display" class="sec-verify-q-box"></div>
+      <div class="key-label">Select Security Question</div>
+      <select id="sec-verify-q-select" class="sec-select" onchange="toggleVerifyCustomQ(this)">
+        <option value="What was the name of your first school?">What was the name of your first school?</option>
+        <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+        <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+        <option value="In what city were you born?">In what city were you born?</option>
+        <option value="What was the make of your first car?">What was the make of your first car?</option>
+        <option value="__custom__">Custom Question...</option>
+      </select>
+
+      <div id="sec-verify-custom-q-wrap" style="display:none;">
+        <div class="key-label">Custom Question</div>
+        <input type="text" id="sec-verify-custom-q" class="sec-input" placeholder="Type your custom question...">
+      </div>
 
       <div class="key-label">Your Answer</div>
       <input type="text" id="sec-verify-answer" class="sec-input" placeholder="Enter your answer...">
-
-      <div id="sec-attempts-badge" class="sec-attempts-badge">Attempt 1 of 3 (3 tries max before lockout)</div>
 
       <button class="auth-btn" id="sec-verify-btn" onclick="submitSecurityVerify()">Verify Answer</button>
       <div class="auth-error" id="sec-verify-error"></div>
@@ -1375,12 +1385,6 @@ input[type=file]{display:none}
         const verifyPanel = document.getElementById('sec-verify-panel');
         if (keyPanel) keyPanel.style.display = 'none';
         if (verifyPanel) verifyPanel.style.display = 'block';
-        const qDisplay = document.getElementById('sec-verify-q-display');
-        if (qDisplay) qDisplay.textContent = data.question || 'Security Question';
-        if (data.attemptsLeft !== undefined) {
-          const badge = document.getElementById('sec-attempts-badge');
-          if (badge) badge.textContent = `Attempt ${4 - data.attemptsLeft} of 3 (${data.attemptsLeft} try/tries remaining)`;
-        }
         return;
       }
 
@@ -2054,6 +2058,12 @@ input[type=file]{display:none}
       bucketSessionRestricted = true;
       try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}
       showInvalid(payload?.message || 'This upload link has been restricted. Please contact your project manager.');
+      socket.disconnect();
+    });
+    socket.on('bucket_session_invalidated', payload => {
+      bucketSessionRestricted = true;
+      try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}
+      showInvalid(payload?.message || 'Logged out: Your upload portal was accessed from another device.');
       socket.disconnect();
     });
     socket.on('disconnect', () => {
