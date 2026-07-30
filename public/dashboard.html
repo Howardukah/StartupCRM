@@ -11864,7 +11864,7 @@
           startPolling();
         }
 
-        if (typeof reloadDBFromDisk === 'function') {
+        if (typeof reloadDBFromDisk === 'function' && Date.now() >= _localMutationUntil) {
           await reloadDBFromDisk();
         }
 
@@ -11881,6 +11881,10 @@
         clearTimeout(_recoveryRetryTimer);
         _recoveryRetryTimer = null;
 
+        if (typeof _setSaveIndicator === 'function') {
+          _setSaveIndicator('saved');
+        }
+
         if (typeof showToast === 'function') {
           showToast('Network restored.', 'success');
         }
@@ -11888,11 +11892,11 @@
         _recoveringConnection = false;
         _recoveryAttempts++;
 
-        if (_recoveryAttempts <= 3 && navigator.onLine) {
+        if (navigator.onLine) {
           clearTimeout(_recoveryRetryTimer);
           _recoveryRetryTimer = setTimeout(() => {
             recoverConnection();
-          }, 5000);
+          }, 4000);
         } else {
           _recoveryAttempts = 0;
           if (typeof _setSaveIndicator === 'function') {
