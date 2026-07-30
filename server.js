@@ -1224,9 +1224,9 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.post('/api/auth/verify-security-question', async (req, res) => {
   try {
-    const { userId, challengeToken, securityQuestion, securityAnswer } = req.body || {};
-    if (!userId || !challengeToken || !securityQuestion || !securityAnswer) {
-      return res.status(400).json({ error: 'User ID, challenge token, security question, and security answer are required.' });
+    const { userId, challengeToken, securityQuestion, securityAnswer, password } = req.body || {};
+    if (!userId || !challengeToken || !securityQuestion || !securityAnswer || !password) {
+      return res.status(400).json({ error: 'User ID, challenge token, security question, security answer, and password are required.' });
     }
 
     const submittedNorm = normalizeLoginEmail(userId);
@@ -1249,6 +1249,12 @@ app.post('/api/auth/verify-security-question', async (req, res) => {
     }
 
     const member = data.team[memberIndex];
+
+    const passwordOk = await bcrypt.compare(password, member.password || '');
+    if (!passwordOk) {
+      await Promise.all([recordFailure(emailKey), recordFailure(ipKey)]);
+      return res.status(401).json({ error: 'Incorrect credentials. Check login credentials and try again.' });
+    }
 
     // Validate and consume single-use challenge token (prevents replay/bypass attacks)
     const isChallengeValid = verifyAndConsumeChallengeToken(challengeToken, member.id);
@@ -4209,44 +4215,55 @@ app.post('/api/storage/upload/:token', storageUploadLimiter, upload.array('files
       });
     }
 
-    const { data: existing } = await supabase.from('assets').select('size_bytes').eq('bucket_id', bucket.id);
-    const usedBytes = (existing || []).reduce((s, a) => s + parseInt(a.size_bytes || 0), 0);
-    const incomingBytes = files.reduce((s, f) => s + f.size, 0);
-    if (usedBytes + incomingBytes > quotaBytes) {
-      return res.status(413).json({
-        error: `Storage quota exceeded. Used: ${fmtBytesServer(usedBytes)}, Quota: ${fmtBytesServer(quotaBytes)}, Incoming: ${fmtBytesServer(incomingBytes)}.`,
-        quotaExceeded: true,
-        usedBytes, quotaBytes, incomingBytes,
-      });
-    }
-    // ─────────────────────────────────────────────────────────────────────
-
     const clientName = String(req.body?.clientName || '').slice(0, 100);
-    const savedAssets = [];
+    let quotaError = null;
+    let savedAssets = [];
+    let newUsedBytes = 0;
+    let incomingBytes = files.reduce((s, f) => s + f.size, 0);
 
-    for (const file of files) {
-      const assetId = crypto.randomUUID();
-      const safeFilename = file.originalname.replace(/[\/\\]/g, '_');
-      const storagePath = `asset-buckets/${bucket.project_id}/${assetId}/${safeFilename}`;
+    await withCrmWriteLock(async () => {
+      const { data: existing } = await supabase.from('assets').select('size_bytes').eq('bucket_id', bucket.id);
+      const usedBytes = (existing || []).reduce((s, a) => s + parseInt(a.size_bytes || 0), 0);
+      if (usedBytes + incomingBytes > quotaBytes) {
+        quotaError = {
+          status: 413,
+          body: {
+            error: `Storage quota exceeded. Used: ${fmtBytesServer(usedBytes)}, Quota: ${fmtBytesServer(quotaBytes)}, Incoming: ${fmtBytesServer(incomingBytes)}.`,
+            quotaExceeded: true,
+            usedBytes, quotaBytes, incomingBytes,
+          }
+        };
+        return;
+      }
 
-      await uploadToB2(storagePath, file.buffer, file.mimetype);
+      for (const file of files) {
+        const assetId = crypto.randomUUID();
+        const safeFilename = file.originalname.replace(/[\/\\]/g, '_');
+        const storagePath = `asset-buckets/${bucket.project_id}/${assetId}/${safeFilename}`;
 
-      const { data: assetRow, error: aErr } = await supabase.from('assets').insert({
-        id: assetId,
-        project_id: bucket.project_id,
-        bucket_id: bucket.id,
-        filename: safeFilename,
-        size_bytes: file.size,
-        content_type: file.mimetype,
-        storage_path: storagePath,
-        client_name: clientName || null,
-        uploaded_at: new Date().toISOString(),
-      }).select().single();
-      if (aErr) throw new Error(aErr.message);
-      savedAssets.push({ id: assetId, filename: safeFilename, size: file.size, content_type: file.mimetype, uploaded_at: new Date().toISOString() });
+        await uploadToB2(storagePath, file.buffer, file.mimetype);
+
+        const { data: assetRow, error: aErr } = await supabase.from('assets').insert({
+          id: assetId,
+          project_id: bucket.project_id,
+          bucket_id: bucket.id,
+          filename: safeFilename,
+          size_bytes: file.size,
+          content_type: file.mimetype,
+          storage_path: storagePath,
+          client_name: clientName || null,
+          uploaded_at: new Date().toISOString(),
+        }).select().single();
+        if (aErr) throw new Error(aErr.message);
+        savedAssets.push({ id: assetId, filename: safeFilename, size: file.size, content_type: file.mimetype, uploaded_at: new Date().toISOString() });
+      }
+
+      newUsedBytes = usedBytes + incomingBytes;
+    });
+
+    if (quotaError) {
+      return res.status(quotaError.status).json(quotaError.body);
     }
-
-    const newUsedBytes = usedBytes + incomingBytes;
     console.log(`📦 ${files.length} file(s) uploaded to bucket ${bucket.id} (used: ${fmtBytesServer(newUsedBytes)} / ${fmtBytesServer(quotaBytes)})`);
     io.emit('db_changed');
     res.json({ ok: true, uploaded: savedAssets, usedBytes: newUsedBytes, quotaBytes });

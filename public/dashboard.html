@@ -14871,7 +14871,13 @@
       if (!to) { showToast('Please enter a recipient email address.', 'error'); return; }
 
       const sendBtn = document.querySelector('#mail-compose .btn--primary');
+      const mailTo = document.getElementById('mail-to');
+      const mailCc = document.getElementById('mail-cc');
+      const mailSubject = document.getElementById('mail-subject');
+      const mailBody = document.getElementById('mail-body');
+
       if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'Sending...'; }
+      [mailTo, mailCc, mailSubject, mailBody].forEach(el => { if (el) el.disabled = true; });
 
       try {
         const attachments = _composeAttachments.map(a => ({
@@ -14923,6 +14929,7 @@
         showToast('Send failed: ' + e.message, 'error');
       } finally {
         if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
+        [mailTo, mailCc, mailSubject, mailBody].forEach(el => { if (el) el.disabled = false; });
       }
     }
 
@@ -14934,7 +14941,13 @@
       const body = document.getElementById('mail-body').value;
 
       const saveBtn = document.querySelector('#mail-compose .btn--ghost');
+      const mailTo = document.getElementById('mail-to');
+      const mailCc = document.getElementById('mail-cc');
+      const mailSubject = document.getElementById('mail-subject');
+      const mailBody = document.getElementById('mail-body');
+
       if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+      [mailTo, mailCc, mailSubject, mailBody].forEach(el => { if (el) el.disabled = true; });
 
       try {
         const attachments = _composeAttachments.map(a => ({
@@ -14970,6 +14983,7 @@
         showToast('Save draft failed: ' + e.message, 'error');
       } finally {
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Draft'; }
+        [mailTo, mailCc, mailSubject, mailBody].forEach(el => { if (el) el.disabled = false; });
       }
     }
 
@@ -15208,10 +15222,13 @@
     }
 
     async function mailSaveSettings() {
-      const name = document.getElementById('mail-set-name').value.trim();
+      const mailSetName = document.getElementById('mail-set-name');
+      const name = mailSetName ? mailSetName.value.trim() : '';
 
       const saveBtn = document.querySelector('#mail-settings .btn--primary');
       if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+      if (mailSetName) mailSetName.disabled = true;
+
       try {
         const r = await fetch('/api/mail/settings', {
           method: 'POST',
@@ -15226,6 +15243,7 @@
         showToast('Save failed: ' + e.message, 'error');
       } finally {
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Settings'; }
+        if (mailSetName) mailSetName.disabled = false;
       }
     }
 
@@ -19359,17 +19377,19 @@
       if (_savingQuota) return; // prevent double-fire from Enter + click
       _savingQuota = true;
 
-      // Immediately disable the Save button so it can't be pressed again
+      // Immediately disable the Save button and quota input so they can't be pressed/edited again
       const saveBtn = document.querySelector(`[onclick="saveAssetEditMode('${bucketId}')"]`);
+      const quotaInput = document.getElementById('quota-edit-' + bucketId);
+
       if (saveBtn) {
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving...';
         saveBtn.style.opacity = '0.6';
         saveBtn.style.cursor = 'not-allowed';
       }
+      if (quotaInput) quotaInput.disabled = true;
 
       try {
-        const quotaInput = document.getElementById('quota-edit-' + bucketId);
         if (quotaInput) {
           const quotaMB = parseInt(quotaInput.value);
           if (!isNaN(quotaMB) && quotaMB >= 1) {
@@ -19397,6 +19417,7 @@
                   saveBtn.style.opacity = '';
                   saveBtn.style.cursor = '';
                 }
+                if (quotaInput) quotaInput.disabled = false;
               }
             } catch (e) {
               showToast('Error saving quota', 'error');
@@ -19406,6 +19427,7 @@
                 saveBtn.style.opacity = '';
                 saveBtn.style.cursor = '';
               }
+              if (quotaInput) quotaInput.disabled = false;
             }
           } else {
             showToast('Please enter a valid quota amount in MB.', 'error');
@@ -19415,12 +19437,15 @@
               saveBtn.style.opacity = '';
               saveBtn.style.cursor = '';
             }
+            if (quotaInput) quotaInput.disabled = false;
             return;
           }
         }
         assetEditMode = null;
         await renderAssetBuckets(true);
       } finally {
+        const qInp = document.getElementById('quota-edit-' + bucketId);
+        if (qInp) qInp.disabled = false;
         _savingQuota = false;
       }
     }

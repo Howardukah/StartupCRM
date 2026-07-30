@@ -1921,6 +1921,7 @@
     let pendingMustChangePwUserId = null;
     let pendingSecurityUserId = null;
     let pendingChallengeToken = null;
+    let pendingSecurityPassword = null;
     const API_BASE = ''; // Same-origin: frontend and backend served from the same server
 
     function showStep(name) {
@@ -2059,6 +2060,7 @@
         if (data.securityQuestionRequired) {
           pendingSecurityUserId = data.userId;
           pendingChallengeToken = data.challengeToken;
+          pendingSecurityPassword = pwInput ? pwInput.value : '';
           document.getElementById('challenge-security-question').value = '';
           document.getElementById('cs-challenge-question-display').textContent = 'Select your security question';
           document.getElementById('cs-challenge-question-display').classList.add('placeholder');
@@ -2248,6 +2250,7 @@
 
       setBtnLoading('btn-challenge', true);
       try {
+        const password = pendingSecurityPassword || (document.getElementById('signin-password')?.value || '');
         const res = await fetch(API_BASE + '/api/auth/verify-security-question', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2255,7 +2258,8 @@
             userId: pendingSecurityUserId,
             challengeToken: pendingChallengeToken,
             securityQuestion: question,
-            securityAnswer: answer
+            securityAnswer: answer,
+            password: password
           })
         });
         const data = await res.json();

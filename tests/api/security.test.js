@@ -17,22 +17,22 @@ describe('Security Challenge & Admin Setup Endpoints', () => {
       .send({});
     
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe('User ID, challenge token, security question, and security answer are required.');
+    expect(res.body.error).toBe('User ID, challenge token, security question, security answer, and password are required.');
   }, 30000);
 
   it('POST /api/auth/verify-security-question - should return 400 if question is missing', async () => {
     const res = await request(app)
       .post('/api/auth/verify-security-question')
-      .send({ userId: 'user-sec-test-' + Date.now(), challengeToken: 'dummy', securityAnswer: 'test' });
+      .send({ userId: 'user-sec-test-' + Date.now(), challengeToken: 'dummy', securityAnswer: 'test', password: 'pass' });
     
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe('User ID, challenge token, security question, and security answer are required.');
+    expect(res.body.error).toBe('User ID, challenge token, security question, security answer, and password are required.');
   }, 30000);
 
   it('POST /api/auth/verify-security-question - should return 404 for non-existent user', async () => {
     const res = await request(app)
       .post('/api/auth/verify-security-question')
-      .send({ userId: 'nonexistent-user-' + Date.now(), challengeToken: 'dummy.token', securityQuestion: 'In what city were you born?', securityAnswer: 'test' });
+      .send({ userId: 'nonexistent-user-' + Date.now(), challengeToken: 'dummy.token', securityQuestion: 'In what city were you born?', securityAnswer: 'test', password: 'somepassword' });
     
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('User not found.');
@@ -41,7 +41,7 @@ describe('Security Challenge & Admin Setup Endpoints', () => {
   it('POST /api/auth/verify-security-question - should return 404 for user not found in database', async () => {
     const res = await request(app)
       .post('/api/auth/verify-security-question')
-      .send({ userId: 'unregistered-user-' + Date.now(), challengeToken: 'invalid.token', securityQuestion: 'In what city were you born?', securityAnswer: 'test' });
+      .send({ userId: 'unregistered-user-' + Date.now(), challengeToken: 'invalid.token', securityQuestion: 'In what city were you born?', securityAnswer: 'test', password: 'somepassword' });
     
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('User not found.');
