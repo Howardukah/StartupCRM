@@ -11761,6 +11761,7 @@
     let _lastOfflineNoticeAt = 0;
     const _memberSuspensionPending = new Set();
     const _pendingTaskToggles = new Map();
+    const _pendingTaskDeletes = new Set();
     // Guard against concurrent deletes of the same entity (race condition protection)
     const _deletingIds = new Set();
 
@@ -11909,6 +11910,18 @@
         found.t.done = pending.done;
         found.t.completedAt = pending.completedAt;
         if (pending.createdAt) found.t.createdAt = pending.createdAt;
+      });
+      return projects;
+    }
+
+    function applyPendingTaskDeletes(projects) {
+      if (!_pendingTaskDeletes.size || !Array.isArray(projects)) return projects;
+      projects.forEach(p => {
+        if (!Array.isArray(p.sprints)) return;
+        p.sprints.forEach(s => {
+          if (!Array.isArray(s.tasks)) return;
+          s.tasks = s.tasks.filter(t => t && !_pendingTaskDeletes.has(t.id));
+        });
       });
       return projects;
     }
@@ -12065,6 +12078,7 @@
         }
         const fresh = await res.json();
         applyPendingTaskToggles(fresh.projects);
+        applyPendingTaskDeletes(fresh.projects);
         scanForNewNotifications(fresh);
         db.team = fresh.team || []; db.clients = fresh.clients || [];
         db.deletedMeetingIds = Array.from(new Set([...(db.deletedMeetingIds || []), ...(fresh.deletedMeetingIds || [])]));
@@ -22303,8 +22317,29 @@
       const task = s.tasks.find(x => x.id === tid);
       if (!task || !canEditTask(p, s, task)) return;
       _deletingIds.add('task:' + tid);
+      _pendingTaskDeletes.add(tid);
       try {
         if (!s.tasks.find(x => x.id === tid)) return; // already gone
+        // ── Purge any meeting scheduled for this task ──
+        const taskTitleLower = String(task.title || '').trim().toLowerCase();
+        if (Array.isArray(db.meetings)) {
+          const deletedMtgIds = [];
+          db.meetings = db.meetings.filter(m => {
+            if (!m) return false;
+            if (m.taskId === tid) { deletedMtgIds.push(m.id); return false; }
+            if (m.projectId === pid && taskTitleLower && m.title && String(m.title).trim().toLowerCase().includes(taskTitleLower)) {
+              deletedMtgIds.push(m.id);
+              return false;
+            }
+            return true;
+          });
+          if (deletedMtgIds.length > 0) {
+            db.deletedMeetingIds = Array.from(new Set([...(db.deletedMeetingIds || []), ...deletedMtgIds]));
+            deletedMtgIds.forEach(mid => {
+              apiFetch('/api/meetings/' + mid, { method: 'DELETE' }).catch(() => {});
+            });
+          }
+        }
         s.tasks = s.tasks.filter(x => x.id !== tid);
         const removedSprintIds = cleanupEmptySprints(p);
         if (removedSprintIds.length > 0) {
@@ -22313,7 +22348,7 @@
         handleSprintTaskCompletion(p, s);
         syncProjectLifecycleWithTasks(p);
         // Instant 0ms optimistic UI re-render
-        persistAndRender([() => renderProjectDetail(pid), renderProjects, renderOverview, renderNotifications], { save: false });
+        persistAndRender([() => renderProjectDetail(pid), renderProjects, renderMeetings, renderOverview, renderNotifications], { save: false });
 
         // Fire background API: delete the task, then delete any now-empty sprints
         apiFetch('/api/projects/' + pid + '/sprints/' + sid + '/tasks/' + tid, { method: 'DELETE' })
@@ -22325,9 +22360,11 @@
           })
           .catch(err => {
             showToast('Could not sync deleted task: ' + (err.message || 'Error'), 'error');
+            _pendingTaskDeletes.delete(tid);
           });
       } finally {
         setTimeout(() => _deletingIds.delete('task:' + tid), 500);
+        setTimeout(() => _pendingTaskDeletes.delete(tid), 30000);
       }
     }
 

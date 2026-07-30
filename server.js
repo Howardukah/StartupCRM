@@ -1750,12 +1750,30 @@ app.delete('/api/projects/:pid/sprints/:sid/tasks/:tid', validateSession, async 
       if (!project) { res.status(404).json({ error: 'Project not found.' }); return; }
       const sprint = (project.sprints || []).find(s => s && s.id === sid);
       if (!sprint) { res.status(404).json({ error: 'Sprint not found.' }); return; }
+      const taskObj = (sprint.tasks || []).find(t => t && t.id === tid);
       const initialLen = (sprint.tasks || []).length;
       sprint.tasks = (sprint.tasks || []).filter(t => t && t.id !== tid);
       if (sprint.tasks.length === initialLen) { res.status(404).json({ error: 'Task not found.' }); return; }
       sprintDeleted = sprint.tasks.length === 0;
       if (sprintDeleted) {
         project.sprints = (project.sprints || []).filter(s => s && s.id !== sid);
+      }
+      // Purge meetings associated with this task
+      if (taskObj && Array.isArray(crmData.meetings)) {
+        const taskTitleLower = String(taskObj.title || '').trim().toLowerCase();
+        const deletedIds = [];
+        crmData.meetings = crmData.meetings.filter(m => {
+          if (!m) return false;
+          if (m.taskId === tid) { deletedIds.push(m.id); return false; }
+          if (m.projectId === pid && taskTitleLower && m.title && String(m.title).trim().toLowerCase().includes(taskTitleLower)) {
+            deletedIds.push(m.id);
+            return false;
+          }
+          return true;
+        });
+        if (deletedIds.length > 0) {
+          crmData.deletedMeetingIds = Array.from(new Set([...(crmData.deletedMeetingIds || []), ...deletedIds]));
+        }
       }
       await setCrmData(crmData);
       res.json({ ok: true, sprintDeleted });
