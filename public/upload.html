@@ -1105,6 +1105,10 @@ input[type=file]{display:none}
     }
     try {
       const res = await fetch(SERVER + '/api/asset-bucket/validate/' + bucketToken);
+      if (res.status === 429) {
+        showInvalid('Too many requests from your IP. Please wait a minute before trying again.');
+        return;
+      }
       if (res.status === 403) { 
         try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}
         showInvalid('This upload link has been restricted. Please contact your project manager.'); 
@@ -1184,11 +1188,25 @@ input[type=file]{display:none}
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ secretKey: key }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 429) {
+        document.getElementById('key-input').classList.add('error');
+        errEl.textContent = data.error || data.message || 'Too many attempts. Your IP has been temporarily restricted for 15 minutes.';
+        btn.disabled = false;
+        btn.textContent = 'Verify Key';
+        return;
+      }
+
+      if (res.status === 403) {
+        try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}
+        showInvalid(data.error || 'This upload link has been restricted. Please contact your project manager.');
+        return;
+      }
 
       if (!res.ok || !data.ok) {
         document.getElementById('key-input').classList.add('error');
-        errEl.textContent = data.error || 'Incorrect key. Please try again.';
+        errEl.textContent = data.error || data.message || 'Incorrect key. Please try again.';
         btn.disabled = false;
         btn.textContent = 'Verify Key';
         return;
@@ -1379,12 +1397,18 @@ input[type=file]{display:none}
       clearInterval(timer);
       progFill.style.width = '100%';
 
-      const res = await r.json();
+      const res = await r.json().catch(() => ({}));
       if (!r.ok) {
-        if (res.quotaExceeded) {
+        if (r.status === 429) {
+          showToast('⚠️ Rate limit exceeded (max 20 uploads/min). Please wait a minute before uploading.', 'error');
+        } else if (r.status === 403) {
+          showToast('⛔ Upload denied. Link restricted.', 'error');
+          try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}
+          showInvalid('This upload link has been restricted. Please contact your project manager.');
+        } else if (res.quotaExceeded) {
           showToast('❌ Storage quota exceeded. Some files may not have uploaded.', 'error');
         } else {
-          throw new Error(res.error || 'Upload failed.');
+          throw new Error(res.error || res.message || 'Upload failed.');
         }
       } else {
         usedBytes = res.usedBytes || usedBytes;
