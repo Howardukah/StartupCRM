@@ -2133,6 +2133,10 @@ input[type=file]{display:none}
     _recoveringConnection = true;
 
     try {
+      if (window._bucketSocket && !window._bucketSocket.connected) {
+        window._bucketSocket.connect();
+      }
+
       if (typeof validateToken === 'function' && typeof bucketToken !== 'undefined' && bucketToken) {
         const alreadyAuthed = sessionStorage.getItem('bucket-authed-' + bucketToken) === '1';
         await validateToken(alreadyAuthed);
@@ -2142,10 +2146,6 @@ input[type=file]{display:none}
       _recoveringConnection = false;
       clearTimeout(_recoveryRetryTimer);
       _recoveryRetryTimer = null;
-
-      if (typeof showToast === 'function') {
-        showToast('Network restored.', 'success');
-      }
     } catch (err) {
       _recoveringConnection = false;
       _recoveryAttempts++;
@@ -2158,16 +2158,24 @@ input[type=file]{display:none}
       } else {
         _recoveryAttempts = 0;
         if (typeof showToast === 'function') {
-          showToast('No internet connection. Please check your network.', 'warn');
+          showToast('No internet connection.', 'error');
         }
       }
     }
   }
 
-  window.addEventListener('online', () => recoverConnection());
+  window.addEventListener('online', () => {
+    if (typeof showToast === 'function') {
+      showToast('Internet connection restored.', 'success');
+    }
+    if (window._bucketSocket && !window._bucketSocket.connected) {
+      window._bucketSocket.connect();
+    }
+    recoverConnection();
+  });
   window.addEventListener('offline', () => {
     if (typeof showToast === 'function') {
-      showToast('You are offline. Please check your connection.', 'warn');
+      showToast('No internet connection.', 'error');
     }
   });
 

@@ -11846,11 +11846,18 @@
       const nowTs = Date.now();
       if (nowTs - _lastOfflineNoticeAt < 1500) return;
       _lastOfflineNoticeAt = nowTs;
-      showSlideNotification('No internet connection', 'Check your connection and try again.', 'info');
+      if (typeof showToast === 'function') {
+        showToast('No internet connection.', 'error');
+      } else if (typeof showSlideNotification === 'function') {
+        showSlideNotification('No internet connection', 'Check your connection and try again.', 'error');
+      }
     }
 
     window.addEventListener('offline', showNoInternetConnection);
     window.addEventListener('online', () => {
+      if (typeof showToast === 'function') {
+        showToast('Internet connection restored.', 'success');
+      }
       if (typeof recoverConnection === 'function') recoverConnection();
     });
 
@@ -11888,10 +11895,6 @@
 
         if (typeof _setSaveIndicator === 'function') {
           _setSaveIndicator('saved');
-        }
-
-        if (typeof showToast === 'function') {
-          showToast('Network restored.', 'success');
         }
       } catch (err) {
         _recoveringConnection = false;
