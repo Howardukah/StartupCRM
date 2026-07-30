@@ -19267,17 +19267,19 @@
               if (res.ok) {
                 showToast(`Quota updated to ${quotaMB} MB.`, 'success');
                 const b = _cachedAssetBuckets ? _cachedAssetBuckets.find(x => x.id === bucketId) : null;
-                if (b && b.project_id) {
-                  const p = (db.projects || []).find(proj => proj.id === b.project_id);
-                  if (p) {
-                    if (!p.assetBucketConfig) p.assetBucketConfig = {};
-                    p.assetBucketConfig.customQuotaBytes = res.quotaBytes || (quotaMB * 1024 * 1024);
+                if (b) {
+                  b.customQuotaBytes = res.quotaBytes || (quotaMB * 1024 * 1024);
+                  if (b.project_id) {
+                    const p = (db.projects || []).find(proj => proj.id === b.project_id);
+                    if (p) {
+                      if (!p.assetBucketConfig) p.assetBucketConfig = {};
+                      p.assetBucketConfig.customQuotaBytes = res.quotaBytes || (quotaMB * 1024 * 1024);
+                    }
                   }
                 }
                 if (typeof reloadDBFromDisk === 'function') reloadDBFromDisk();
               } else {
                 showToast(res.error || 'Error saving quota', 'error');
-                // Restore button on error so user can retry
                 if (saveBtn) {
                   saveBtn.disabled = false;
                   saveBtn.textContent = 'Save';
@@ -19294,6 +19296,15 @@
                 saveBtn.style.cursor = '';
               }
             }
+          } else {
+            showToast('Please enter a valid quota amount in MB.', 'error');
+            if (saveBtn) {
+              saveBtn.disabled = false;
+              saveBtn.textContent = 'Save';
+              saveBtn.style.opacity = '';
+              saveBtn.style.cursor = '';
+            }
+            return;
           }
         }
         assetEditMode = null;
@@ -19420,7 +19431,7 @@
         const isEditing = assetEditMode === b.id;
 
         let quotaHtml = isEditing
-          ? `<div style="display:flex;align-items:center;gap:4px;"><input type="number" id="quota-edit-${b.id}" value="${Math.round(quotaBytes / 1024 / 1024)}" class="field__input" style="width:80px;padding:4px;height:28px;" onkeydown="if(event.key==='Enter') saveAssetEditMode('${b.id}')" /> MB</div>`
+          ? `<div style="display:flex;align-items:center;gap:4px;"><input type="number" id="quota-edit-${b.id}" value="${Math.round(quotaBytes / 1024 / 1024)}" class="field__input" style="width:80px;padding:4px;height:28px;" onfocus="this.select()" autofocus onkeydown="if(event.key==='Enter') saveAssetEditMode('${b.id}')" /> MB</div>`
           : `${mailFormatBytes(storageUsed)} / ${mailFormatBytes(quotaBytes)}`;
 
         let linkHtml = isEditing
