@@ -11872,18 +11872,14 @@
           await markQueuedChatMessagesDelivered();
         }
 
-        if (typeof queueSave === 'function' && typeof db !== 'undefined' && db) {
-          queueSave(0);
+        if (typeof _flushSave === 'function' && typeof db !== 'undefined' && db) {
+          await _flushSave(true);
         }
 
         _recoveryAttempts = 0;
         _recoveringConnection = false;
         clearTimeout(_recoveryRetryTimer);
         _recoveryRetryTimer = null;
-
-        if (typeof _setSaveIndicator === 'function') {
-          _setSaveIndicator('saved');
-        }
 
         if (typeof showToast === 'function') {
           showToast('Network restored.', 'success');
