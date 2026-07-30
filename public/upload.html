@@ -861,7 +861,7 @@ input[type=file]{display:none}
     #notfound-screen .contact { margin-top: 30px; font-size: 14px; color: #111; font-weight: 500; }
     #notfound-screen .contact a { color: #111; text-decoration: none; font-weight: 600; }
 
-    /* ── AUTH SECURITY QUESTION FORM STYLES ─────────────────────────── */
+    /* ── AUTH SECURITY QUESTION FORM & CUSTOM SELECT STYLES ─────────────────────────── */
     .sec-select, .sec-input {
       width: 100%;
       background: rgba(255, 255, 255, 0.04);
@@ -876,7 +876,7 @@ input[type=file]{display:none}
       transition: border-color 0.2s, box-shadow 0.2s;
       appearance: none;
       -webkit-appearance: none;
-      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2312A3B4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
       background-repeat: no-repeat;
       background-position: right 14px center;
       background-size: 16px;
@@ -886,13 +886,92 @@ input[type=file]{display:none}
       background-image: none;
     }
     .sec-select option {
-      background-color: #121318;
-      color: #fff;
-      padding: 10px;
+      background-color: #0E0F14;
+      color: #F1F5F9;
+      padding: 12px 14px;
+      font-size: 14px;
+    }
+    .sec-select option:hover,
+    .sec-select option:focus,
+    .sec-select option:active,
+    .sec-select option:checked {
+      background-color: rgba(18, 163, 180, 0.3) !important;
+      background-image: linear-gradient(0deg, rgba(18, 163, 180, 0.3) 0%, rgba(18, 163, 180, 0.3) 100%) !important;
+      color: #00F2FE !important;
     }
     .sec-select:focus, .sec-input:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(18, 163, 180, 0.15);
+    }
+
+    /* ── CUSTOM DROPDOWN SELECTOR SYSTEM ─────────────────────────── */
+    .custom-sec-select-box {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1.5px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-weight: 500;
+      font-family: var(--sans);
+      color: #fff;
+      outline: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .custom-sec-select-box:focus, .custom-sec-select-box.is-open {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(18, 163, 180, 0.18);
+    }
+    .custom-sec-select-box svg {
+      transition: transform 0.2s ease;
+    }
+    .custom-sec-select-box.is-open svg {
+      transform: rotate(180deg);
+    }
+    .custom-sec-select-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      width: 100%;
+      background: #111218;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65);
+      z-index: 100;
+      display: none;
+      overflow: hidden;
+      max-height: 240px;
+      overflow-y: auto;
+      padding: 6px;
+    }
+    .custom-sec-select-menu.is-open {
+      display: block;
+      animation: fadeInSelectMenu 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes fadeInSelectMenu {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .custom-sec-select-item {
+      padding: 10px 14px;
+      font-size: 14px;
+      color: #CBD5E1;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .custom-sec-select-item:hover {
+      background: rgba(18, 163, 180, 0.15);
+      color: #fff;
+    }
+    .custom-sec-select-item.is-selected {
+      background: rgba(18, 163, 180, 0.22);
+      color: var(--accent);
+      font-weight: 700;
     }
     .sec-verify-q-box {
       font-weight: 700;
@@ -1376,6 +1455,7 @@ input[type=file]{display:none}
         const setupPanel = document.getElementById('sec-setup-panel');
         if (keyPanel) keyPanel.style.display = 'none';
         if (setupPanel) setupPanel.style.display = 'block';
+        if (typeof initCustomSelects === 'function') initCustomSelects();
         return;
       }
 
@@ -1385,6 +1465,7 @@ input[type=file]{display:none}
         const verifyPanel = document.getElementById('sec-verify-panel');
         if (keyPanel) keyPanel.style.display = 'none';
         if (verifyPanel) verifyPanel.style.display = 'block';
+        if (typeof initCustomSelects === 'function') initCustomSelects();
         return;
       }
 
@@ -1398,6 +1479,65 @@ input[type=file]{display:none}
     }
   }
   window.submitKey = submitKey;
+
+  function initCustomSelects() {
+    document.querySelectorAll('.sec-select').forEach(select => {
+      if (select.dataset.customInitialized) return;
+      select.dataset.customInitialized = 'true';
+      select.style.display = 'none';
+
+      const wrap = document.createElement('div');
+      wrap.className = 'custom-sec-select-wrap';
+      wrap.style.cssText = 'position:relative;width:100%;margin-bottom:16px;';
+
+      const box = document.createElement('div');
+      box.className = 'custom-sec-select-box';
+      box.tabIndex = 0;
+      box.innerHTML = `<span class="custom-sec-select-label">${escapeHtml(select.options[select.selectedIndex]?.text || select.options[0]?.text || '')}</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+
+      const menu = document.createElement('div');
+      menu.className = 'custom-sec-select-menu';
+
+      function renderMenu() {
+        menu.innerHTML = '';
+        Array.from(select.options).forEach((opt, idx) => {
+          const item = document.createElement('div');
+          item.className = 'custom-sec-select-item' + (select.selectedIndex === idx ? ' is-selected' : '');
+          item.textContent = opt.text;
+          item.addEventListener('click', () => {
+            select.selectedIndex = idx;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            box.querySelector('.custom-sec-select-label').textContent = opt.text;
+            menu.classList.remove('is-open');
+            box.classList.remove('is-open');
+            renderMenu();
+          });
+          menu.appendChild(item);
+        });
+      }
+
+      renderMenu();
+
+      box.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.querySelectorAll('.custom-sec-select-menu.is-open').forEach(m => {
+          if (m !== menu) { m.classList.remove('is-open'); m.previousElementSibling?.classList.remove('is-open'); }
+        });
+        const isOpen = menu.classList.toggle('is-open');
+        box.classList.toggle('is-open', isOpen);
+      });
+
+      select.parentNode.insertBefore(wrap, select);
+      wrap.appendChild(select);
+      wrap.appendChild(box);
+      wrap.appendChild(menu);
+    });
+  }
+  window.initCustomSelects = initCustomSelects;
+
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.custom-sec-select-menu.is-open, .custom-sec-select-box.is-open').forEach(el => el.classList.remove('is-open'));
+  });
 
   function toggleCustomQ(selectEl) {
     const customWrap = document.getElementById('sec-custom-q-wrap');
