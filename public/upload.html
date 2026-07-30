@@ -1164,6 +1164,24 @@ input[type=file]{display:none}
   </div>
 </div>
 
+<!-- Middle Screen Session Terminated Alert Modal -->
+<div id="session-logout-modal" class="session-modal-overlay" style="display:none;">
+  <div class="session-modal-card">
+    <div class="session-modal-icon">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00F2FE" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+        <line x1="12" y1="9" x2="12" y2="13"></line>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+    </div>
+    <div class="session-modal-title">Session Terminated</div>
+    <div class="session-modal-msg" id="session-logout-msg">
+      Your session was logged out because your upload portal was accessed from another device.
+    </div>
+    <button class="session-modal-btn" onclick="handleSessionLogoutRedirect()">Log In Again</button>
+  </div>
+</div>
+
 
 <!-- TOPBAR -->
 <div id="topbar">
@@ -1684,6 +1702,42 @@ input[type=file]{display:none}
     }
   }
 
+  function showSessionLogoutAlert(msg) {
+    const modal = document.getElementById('session-logout-modal');
+    const msgEl = document.getElementById('session-logout-msg');
+    if (msgEl && msg) msgEl.textContent = msg;
+    if (modal) modal.style.display = 'flex';
+  }
+  window.showSessionLogoutAlert = showSessionLogoutAlert;
+
+  function handleSessionLogoutRedirect() {
+    const modal = document.getElementById('session-logout-modal');
+    if (modal) modal.style.display = 'none';
+    
+    const stMain = document.getElementById('main-content-wrapper');
+    if (stMain) stMain.style.display = 'none';
+    const loader = document.getElementById('loading-screen');
+    if (loader) loader.style.display = 'none';
+    const notfound = document.getElementById('notfound-screen');
+    if (notfound) notfound.style.display = 'none';
+
+    const authScreen = document.getElementById('auth-screen');
+    const keyPanel = document.getElementById('key-form-panel');
+    const setupPanel = document.getElementById('sec-setup-panel');
+    const verifyPanel = document.getElementById('sec-verify-panel');
+    if (setupPanel) setupPanel.style.display = 'none';
+    if (verifyPanel) verifyPanel.style.display = 'none';
+    if (authScreen) authScreen.style.display = 'flex';
+    if (keyPanel) keyPanel.style.display = 'block';
+
+    const keyInput = document.getElementById('key-input');
+    if (keyInput) {
+      keyInput.value = '';
+      keyInput.focus();
+    }
+  }
+  window.handleSessionLogoutRedirect = handleSessionLogoutRedirect;
+
   function formatUserFriendlyError(err, fallback = 'Something went wrong. Please try again.') {
     if (!err) return fallback;
     let msg = '';
@@ -2171,10 +2225,7 @@ input[type=file]{display:none}
     socket.on('bucket_session_invalidated', payload => {
       bucketSessionRestricted = true;
       try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}
-      showToast(payload?.message || 'Logged out: Your upload portal was accessed from another device.', 'warn');
-      setTimeout(() => {
-        showInvalid(payload?.message || 'Logged out: Your upload portal was accessed from another device.');
-      }, 2500);
+      showSessionLogoutAlert(payload?.message || 'Your session was logged out because your upload portal was accessed from another device.');
       socket.disconnect();
     });
     socket.on('disconnect', () => {

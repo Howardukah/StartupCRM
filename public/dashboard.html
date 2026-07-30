@@ -11300,12 +11300,7 @@
         });
         _socket.on('user_session_invalidated', (data) => {
           if (data && data.userId === currentUserId) {
-            if (typeof showToast === 'function') {
-              showToast(data.message || 'Logged out: Account accessed on another device.', 'warn');
-            }
-            setTimeout(() => {
-              if (typeof backToSignIn === 'function') backToSignIn();
-            }, 800);
+            showDashboardSessionLogoutAlert(data.message || 'Your account was logged into from another device. For security reasons, your active session on this device has been ended.');
           }
         });
         _socket.on('db_changed', (data) => {
@@ -24133,11 +24128,116 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
       <span id="kebab-mark-text">Mark as read</span>
     </button>
-    <button class="kebab-delete" onclick="window.kebabDeleteMail(event)">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-      Delete
-    </button>
+  <!-- Middle Screen Session Terminated Alert Modal -->
+  <style>
+    .session-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(8, 9, 13, 0.85);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      z-index: 999999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      animation: sessionModalFadeIn 0.25s ease-out forwards;
+    }
+    @keyframes sessionModalFadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .session-modal-card {
+      background: #111218;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 20px;
+      padding: 32px 28px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(18, 163, 180, 0.2);
+    }
+    .session-modal-icon {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: rgba(18, 163, 180, 0.12);
+      border: 1.5px solid rgba(18, 163, 180, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 18px auto;
+    }
+    .session-modal-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 10px;
+    }
+    .session-modal-msg {
+      font-size: 14px;
+      color: #94A3B8;
+      line-height: 1.55;
+      margin-bottom: 24px;
+    }
+    .session-modal-btn {
+      width: 100%;
+      padding: 13px 20px;
+      background: linear-gradient(135deg, #12A3B4 0%, #00F2FE 100%);
+      color: #0E0F14;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .session-modal-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(18, 163, 180, 0.4);
+    }
+  </style>
+
+  <div id="session-logout-modal" class="session-modal-overlay" style="display:none;">
+    <div class="session-modal-card">
+      <div class="session-modal-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00F2FE" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+          <line x1="12" y1="9" x2="12" y2="13"></line>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+      </div>
+      <div class="session-modal-title">Session Terminated</div>
+      <div class="session-modal-msg" id="session-logout-msg">
+        Your account was logged into from another device. For security reasons, your active session on this device has been ended.
+      </div>
+      <button class="session-modal-btn" onclick="handleDashboardSessionLogoutRedirect()">Log In Again</button>
+    </div>
   </div>
+
+  <script>
+    function showDashboardSessionLogoutAlert(msg) {
+      const modal = document.getElementById('session-logout-modal');
+      const msgEl = document.getElementById('session-logout-msg');
+      if (msgEl && msg) msgEl.textContent = msg;
+      if (modal) modal.style.display = 'flex';
+    }
+    window.showDashboardSessionLogoutAlert = showDashboardSessionLogoutAlert;
+
+    function handleDashboardSessionLogoutRedirect() {
+      const modal = document.getElementById('session-logout-modal');
+      if (modal) modal.style.display = 'none';
+      if (typeof backToSignIn === 'function') {
+        backToSignIn();
+      } else {
+        window.location.href = '/';
+      }
+    }
+    window.handleDashboardSessionLogoutRedirect = handleDashboardSessionLogoutRedirect;
+  </script>
 </body></html>
 
 
