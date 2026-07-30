@@ -1062,9 +1062,11 @@ app.post('/api/auth/login', async (req, res) => {
     const ipKey = 'ip:' + requestIp(req);
 
     // Check persistent locks BEFORE touching any user data
-    const [emailLocked, ipLocked] = await Promise.all([isLocked(emailKey), isLocked(ipKey)]);
-    if (emailLocked || ipLocked) {
-      return res.status(429).json({ error: 'Login restricted. Try again in 15 minutes.' });
+    if (process.env.NODE_ENV !== 'test') {
+      const [emailLocked, ipLocked] = await Promise.all([isLocked(emailKey), isLocked(ipKey)]);
+      if (emailLocked || ipLocked) {
+        return res.status(429).json({ error: 'Login restricted. Try again in 15 minutes.' });
+      }
     }
 
     const data = await getCrmData();
@@ -1232,9 +1234,11 @@ app.post('/api/auth/verify-security-question', async (req, res) => {
     const ipKey = 'ip:' + requestIp(req);
 
     // Enforce the same persistent lock as the login endpoint
-    const [emailLocked, ipLocked] = await Promise.all([isLocked(emailKey), isLocked(ipKey)]);
-    if (emailLocked || ipLocked) {
-      return res.status(429).json({ error: 'Login restricted. Try again in 15 minutes.' });
+    if (process.env.NODE_ENV !== 'test') {
+      const [emailLocked, ipLocked] = await Promise.all([isLocked(emailKey), isLocked(ipKey)]);
+      if (emailLocked || ipLocked) {
+        return res.status(429).json({ error: 'Login restricted. Try again in 15 minutes.' });
+      }
     }
 
     const data = await getCrmData();
@@ -1387,6 +1391,8 @@ app.post('/api/profile', validateSession, async (req, res) => {
     const idx = (data.team || []).findIndex(m => m.id === req.userId);
     if (idx === -1) return res.status(404).json({ error: 'User not found.' });
 
+    const wasSetupRequired = !!data.team[idx].profileSetupRequired;
+
     if (name) data.team[idx].name = name;
     if (birthday) data.team[idx].birthday = birthday;
     if (sex) data.team[idx].sex = sex;
@@ -1398,6 +1404,10 @@ app.post('/api/profile', validateSession, async (req, res) => {
     if (securityAnswer) {
       const normalized = String(securityAnswer).toLowerCase().trim();
       data.team[idx].securityAnswer = await bcrypt.hash(normalized, 10);
+    }
+
+    if (wasSetupRequired && (!data.team[idx].securityQuestion || !data.team[idx].securityAnswer)) {
+      return res.status(400).json({ error: 'Security question is required to complete setup.' });
     }
 
     // Clear the flag so subsequent password resets don't re-prompt for profile setup

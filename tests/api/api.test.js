@@ -9,4 +9,9 @@ describe('API Tests', () => {
     // Expecting 401 Unauthorized or similar since no session cookie is sent
     expect(response.status).toBeGreaterThanOrEqual(400);
   });
+
+  it('POST /api/profile without auth should return 401/403', async () => {
+    const response = await request(app).post('/api/profile').send({ name: 'Test User' });
+    expect(response.status).toBeGreaterThanOrEqual(400);
+  });
 });
