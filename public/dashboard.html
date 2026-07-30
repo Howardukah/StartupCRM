@@ -19172,6 +19172,7 @@
       let planText = pastedText;
       const genBtn = document.getElementById('ai-generate-btn');
       genBtn.disabled = true;
+      genBtn.style.minWidth = genBtn.offsetWidth + 'px';
       genBtn.innerHTML = '<span class="dots-loader"><span></span><span></span><span></span></span>';
       try {
         if (!planText && p.planFileName) {
@@ -19246,6 +19247,7 @@
         statusEl.textContent = 'Could not reach the local AI server at ' + AI_SERVER_URL + '. Is it running? (' + err.message + ')';
       } finally {
         genBtn.innerHTML = '✨ Generate plan';
+        genBtn.style.minWidth = '';
         genBtn.disabled = false;
       }
     }
