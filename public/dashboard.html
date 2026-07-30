@@ -2815,35 +2815,34 @@
 
     .btn--loading {
       position: relative;
-      overflow: hidden;
       pointer-events: none;
-      color: transparent !important
+      opacity: 0.9;
     }
 
-    .btn--loading::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
+    .dots-loader {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
       height: 100%;
-      width: 40%;
-      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .85), transparent);
-      animation: btn-sweep 1s ease-in-out infinite
+      min-width: 36px;
+      vertical-align: middle;
     }
-
-    .btn--secondary.btn--loading::before,
-    .btn--ghost.btn--loading::before {
-      background: linear-gradient(90deg, transparent, rgba(18, 163, 180, .45), transparent)
+    .dots-loader span {
+      width: 6px;
+      height: 6px;
+      background-color: currentColor;
+      border-radius: 50%;
+      display: inline-block;
+      animation: dot-wave 1.2s infinite ease-in-out;
     }
+    .dots-loader span:nth-child(1) { animation-delay: 0s; }
+    .dots-loader span:nth-child(2) { animation-delay: 0.2s; }
+    .dots-loader span:nth-child(3) { animation-delay: 0.4s; }
 
-    @keyframes btn-sweep {
-      0% {
-        left: -45%
-      }
-
-      100% {
-        left: 105%
-      }
+    @keyframes dot-wave {
+      0%, 80%, 100% { transform: translateY(0); }
+      40% { transform: translateY(-7px); }
     }
 
     .badge {
@@ -19038,14 +19037,14 @@
       let planText = pastedText;
       const genBtn = document.getElementById('ai-generate-btn');
       genBtn.disabled = true;
-      genBtn.classList.add('btn--loading');
+      genBtn.innerHTML = '<span class="dots-loader"><span></span><span></span><span></span></span>';
       try {
         if (!planText && p.planFileName) {
           const savedFile = await getSavedPlanFile(currentProjectId);
           planText = await extractTextFromFile(savedFile);
         }
       } catch (err) {
-        genBtn.classList.remove('btn--loading');
+        genBtn.innerHTML = '✨ Generate plan';
         genBtn.disabled = false;
         statusEl.textContent = 'Could not read the plan file: ' + err.message;
         return;
@@ -19107,7 +19106,7 @@
       } catch (err) {
         statusEl.textContent = 'Could not reach the local AI server at ' + AI_SERVER_URL + '. Is it running? (' + err.message + ')';
       } finally {
-        genBtn.classList.remove('btn--loading');
+        genBtn.innerHTML = '✨ Generate plan';
         genBtn.disabled = false;
       }
     }
