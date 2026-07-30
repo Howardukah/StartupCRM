@@ -313,6 +313,23 @@ async function setCrmData(data, { retries = 3, baseDelayMs = 500 } = {}) {
   throw new Error(lastErr ? lastErr.message : 'setCrmData failed after retries');
 }
 
+// POST /api/admin/cache-reload — bust the in-memory cache and force re-read from Supabase.
+// Used when a direct Supabase edit is made outside the server (e.g. migration scripts).
+app.post('/api/admin/cache-reload', async (req, res) => {
+  const secret = req.headers['x-admin-secret'] || req.body?.secret;
+  if (secret !== (process.env.ADMIN_SECRET || 'crm_admin_reload')) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  try {
+    _crmCache = null; // bust the cache
+    const fresh = await getCrmData(); // re-reads from Supabase and warms cache
+    io.emit('db_changed'); // push to all connected clients
+    res.json({ ok: true, message: 'Cache reloaded from Supabase and broadcast sent.' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.set('trust proxy', 1); // Render sits behind exactly 1 proxy hop — trust only that layer
 
 function requestIp(req) {
