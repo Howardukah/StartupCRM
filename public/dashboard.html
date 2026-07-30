@@ -11993,7 +11993,12 @@
               if (await markQueuedChatMessagesDelivered()) _savePending = true;
             } catch (e) {
               saveError = e;
-              _setSaveIndicator(isNetworkError(e) ? 'offline' : 'error');
+              if (isNetworkError(e)) {
+                _setSaveIndicator('offline');
+                _savePending = true;
+              } else {
+                _setSaveIndicator('error');
+              }
               break;
             }
           } while (_savePending);
@@ -12001,7 +12006,9 @@
         } finally {
           _saveInFlight = false;
           _saveCurrentPromise = null;
-          if (_savePending) queueSave(0);
+          if (_savePending) {
+            queueSave(saveError ? 4000 : 0);
+          }
         }
         _lastSaveError = saveError;
         if (saveError && throwOnError) throw saveError;
