@@ -5032,8 +5032,7 @@ app.post('/api/asset-bucket/auth/:token', bucketAuthLimiter, async (req, res) =>
           return res.status(403).json({ ok: false, error: 'This upload link has been restricted due to 10 consecutive failed login attempts. Please contact your project manager.' });
         }
 
-        const remaining = 10 - project.assetBucketConfig.failedLoginCount;
-        return res.status(401).json({ ok: false, error: `Incorrect access key. (${remaining} attempt${remaining > 1 ? 's' : ''} remaining before link lockout)` });
+        return res.status(401).json({ ok: false, error: 'Incorrect access key. Please check and try again.' });
       }
       return res.status(401).json({ ok: false, error: 'Incorrect access key. Please check and try again.' });
     }
