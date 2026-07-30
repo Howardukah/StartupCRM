@@ -979,6 +979,77 @@ input[type=file]{display:none}
       margin-bottom: 16px;
     }
 
+    /* ── MIDDLE SCREEN SESSION LOGOUT ALERT MODAL ───────────────────────── */
+    .session-modal-overlay {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      background: rgba(5, 6, 10, 0.88) !important;
+      backdrop-filter: blur(16px) !important;
+      -webkit-backdrop-filter: blur(16px) !important;
+      z-index: 99999999 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      padding: 20px !important;
+      animation: sessionModalFadeIn 0.25s ease-out forwards;
+    }
+    @keyframes sessionModalFadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .session-modal-card {
+      background: #111218 !important;
+      border: 1px solid rgba(255, 255, 255, 0.14) !important;
+      border-radius: 20px !important;
+      padding: 32px 28px !important;
+      max-width: 420px !important;
+      width: 100% !important;
+      text-align: center !important;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(18, 163, 180, 0.25) !important;
+    }
+    .session-modal-icon {
+      width: 58px !important;
+      height: 58px !important;
+      border-radius: 50% !important;
+      background: rgba(18, 163, 180, 0.12) !important;
+      border: 1.5px solid rgba(18, 163, 180, 0.35) !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      margin: 0 auto 18px auto !important;
+    }
+    .session-modal-title {
+      font-size: 20px !important;
+      font-weight: 700 !important;
+      color: #fff !important;
+      margin-bottom: 10px !important;
+    }
+    .session-modal-msg {
+      font-size: 14px !important;
+      color: #94A3B8 !important;
+      line-height: 1.55 !important;
+      margin-bottom: 24px !important;
+    }
+    .session-modal-btn {
+      width: 100% !important;
+      padding: 13px 20px !important;
+      background: linear-gradient(135deg, #12A3B4 0%, #00F2FE 100%) !important;
+      color: #0E0F14 !important;
+      border: none !important;
+      border-radius: 10px !important;
+      font-size: 14px !important;
+      font-weight: 700 !important;
+      cursor: pointer !important;
+      transition: transform 0.15s, box-shadow 0.15s !important;
+    }
+    .session-modal-btn:hover {
+      transform: translateY(-1px) !important;
+      box-shadow: 0 6px 20px rgba(18, 163, 180, 0.4) !important;
+    }
+
     @media (max-width: 700px) {
       #auth-screen {
         display: flex;
@@ -1703,6 +1774,15 @@ input[type=file]{display:none}
   }
 
   function showSessionLogoutAlert(msg) {
+    // Clear session storage immediately so page refresh will force login
+    try { sessionStorage.removeItem('bucket-authed-' + bucketToken); } catch(e) {}
+
+    // Hide main dashboard and topbar so nothing is visible or clickable
+    const stMain = document.getElementById('main-content-wrapper');
+    if (stMain) stMain.style.display = 'none';
+    const topbar = document.getElementById('topbar');
+    if (topbar) topbar.style.display = 'none';
+
     const modal = document.getElementById('session-logout-modal');
     const msgEl = document.getElementById('session-logout-msg');
     if (msgEl && msg) msgEl.textContent = msg;
