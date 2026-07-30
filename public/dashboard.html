@@ -22060,13 +22060,20 @@
       try {
         if (!db.projects.find(x => x.id === id)) return; // already gone
         await apiFetch('/api/projects/' + id, { method: 'DELETE' });
+        // ── Purge all auto-generated sprint meetings for this project ──
+        db.meetings = db.meetings.filter(m => {
+          if (m.projectId !== id) return true;
+          if (m.title && (m.title.startsWith('🚀 Kickoff:') || m.title.startsWith('Sprint Handoff:'))) return false;
+          if (/^S\d+toS\d+ meeting$/.test(m.title)) return false;
+          return true;
+        });
         db.projects = db.projects.filter(x => x.id !== id);
         logActivity('deleted project');
         if (currentProjectId === id) {
           currentProjectId = null;
           goSection('projects');
         }
-        persistAndRender([renderProjects, renderOverview], { save: false });
+        persistAndRender([renderProjects, renderMeetings, renderOverview]);
       } catch (err) {
         showToast('Could not delete project: ' + err.message, 'error');
       } finally {
