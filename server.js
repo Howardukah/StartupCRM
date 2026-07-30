@@ -1742,9 +1742,8 @@ PER_RECORD_COLLECTIONS.forEach(({ key, route }) => {
 app.delete('/api/projects/:pid/sprints/:sid/tasks/:tid', validateSession, async (req, res) => {
   try {
     const { pid, sid, tid } = req.params;
-    // Serialise: read → mutate → write atomically to avoid race-condition timeouts
     let sprintDeleted = false;
-    await (async () => {
+    await withCrmWriteLock(async () => {
       const crmData = await getCrmData();
       const project = (crmData.projects || []).find(p => p && p.id === pid);
       if (!project) { res.status(404).json({ error: 'Project not found.' }); return; }
@@ -1777,7 +1776,7 @@ app.delete('/api/projects/:pid/sprints/:sid/tasks/:tid', validateSession, async 
       }
       await setCrmData(crmData);
       res.json({ ok: true, sprintDeleted });
-    })();
+    });
   } catch (e) {
     console.error('Delete task error:', e);
     res.status(500).json({ error: e.message });
@@ -1976,21 +1975,25 @@ app.post('/api/projects/:pid/sprints/:sid/tasks', validateSession, async (req, r
     const { pid, sid } = req.params;
     const { task } = req.body || {};
     if (!task || !task.id || !task.title) return res.status(400).json({ error: 'Invalid task payload.' });
-    const crmData = await getCrmData();
-    const project = (crmData.projects || []).find(p => p && p.id === pid);
-    if (!project) return res.status(404).json({ error: 'Project not found.' });
-    const sprint = (project.sprints || []).find(s => s && s.id === sid);
-    if (!sprint) return res.status(404).json({ error: 'Sprint not found.' });
-    sprint.tasks = sprint.tasks || [];
-    const existingIdx = sprint.tasks.findIndex(t => t.id === task.id);
-    if (existingIdx !== -1) {
-      sprint.tasks[existingIdx] = { ...sprint.tasks[existingIdx], ...task };
-    } else {
-      sprint.tasks.push(task);
-    }
-    await setCrmData(crmData);
+    await withCrmWriteLock(async () => {
+      const crmData = await getCrmData();
+      const project = (crmData.projects || []).find(p => p && p.id === pid);
+      if (!project) throw new Error('NOT_FOUND_PROJECT');
+      const sprint = (project.sprints || []).find(s => s && s.id === sid);
+      if (!sprint) throw new Error('NOT_FOUND_SPRINT');
+      sprint.tasks = sprint.tasks || [];
+      const existingIdx = sprint.tasks.findIndex(t => t.id === task.id);
+      if (existingIdx !== -1) {
+        sprint.tasks[existingIdx] = { ...sprint.tasks[existingIdx], ...task };
+      } else {
+        sprint.tasks.push(task);
+      }
+      await setCrmData(crmData);
+    });
     res.json({ ok: true, task });
   } catch (e) {
+    if (e.message === 'NOT_FOUND_PROJECT') return res.status(404).json({ error: 'Project not found.' });
+    if (e.message === 'NOT_FOUND_SPRINT') return res.status(404).json({ error: 'Sprint not found.' });
     console.error('Create task error:', e);
     res.status(500).json({ error: e.message });
   }
@@ -2001,17 +2004,24 @@ app.put('/api/projects/:pid/sprints/:sid/tasks/:tid', validateSession, async (re
   try {
     const { pid, sid, tid } = req.params;
     const updates = req.body || {};
-    const crmData = await getCrmData();
-    const project = (crmData.projects || []).find(p => p && p.id === pid);
-    if (!project) return res.status(404).json({ error: 'Project not found.' });
-    const sprint = (project.sprints || []).find(s => s && s.id === sid);
-    if (!sprint) return res.status(404).json({ error: 'Sprint not found.' });
-    const task = (sprint.tasks || []).find(t => t && t.id === tid);
-    if (!task) return res.status(404).json({ error: 'Task not found.' });
-    Object.assign(task, updates.task || updates);
-    await setCrmData(crmData);
-    res.json({ ok: true, task });
+    let updatedTask;
+    await withCrmWriteLock(async () => {
+      const crmData = await getCrmData();
+      const project = (crmData.projects || []).find(p => p && p.id === pid);
+      if (!project) throw new Error('NOT_FOUND_PROJECT');
+      const sprint = (project.sprints || []).find(s => s && s.id === sid);
+      if (!sprint) throw new Error('NOT_FOUND_SPRINT');
+      const task = (sprint.tasks || []).find(t => t && t.id === tid);
+      if (!task) throw new Error('NOT_FOUND_TASK');
+      Object.assign(task, updates.task || updates);
+      updatedTask = task;
+      await setCrmData(crmData);
+    });
+    res.json({ ok: true, task: updatedTask });
   } catch (e) {
+    if (e.message === 'NOT_FOUND_PROJECT') return res.status(404).json({ error: 'Project not found.' });
+    if (e.message === 'NOT_FOUND_SPRINT') return res.status(404).json({ error: 'Sprint not found.' });
+    if (e.message === 'NOT_FOUND_TASK') return res.status(404).json({ error: 'Task not found.' });
     console.error('Update task error:', e);
     res.status(500).json({ error: e.message });
   }
