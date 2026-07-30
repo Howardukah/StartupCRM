@@ -24142,10 +24142,13 @@
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
       z-index: 999999;
-      display: flex;
+      display: none;   /* hidden by default — JS adds --visible to show */
       align-items: center;
       justify-content: center;
       padding: 20px;
+    }
+    .session-modal-overlay--visible {
+      display: flex;
       animation: sessionModalFadeIn 0.25s ease-out forwards;
     }
     @keyframes sessionModalFadeIn {
@@ -24225,13 +24228,19 @@
       const modal = document.getElementById('session-logout-modal');
       const msgEl = document.getElementById('session-logout-msg');
       if (msgEl && msg) msgEl.textContent = msg;
-      if (modal) modal.style.display = 'flex';
+      if (modal) {
+        modal.style.display = '';  // clear inline override
+        modal.classList.add('session-modal-overlay--visible');
+      }
     }
     window.showDashboardSessionLogoutAlert = showDashboardSessionLogoutAlert;
 
     function handleDashboardSessionLogoutRedirect() {
       const modal = document.getElementById('session-logout-modal');
-      if (modal) modal.style.display = 'none';
+      if (modal) {
+        modal.classList.remove('session-modal-overlay--visible');
+        modal.style.display = 'none';
+      }
       if (typeof backToSignIn === 'function') {
         backToSignIn();
       } else {

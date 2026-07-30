@@ -981,19 +981,22 @@ input[type=file]{display:none}
 
     /* ── MIDDLE SCREEN SESSION LOGOUT ALERT MODAL ───────────────────────── */
     .session-modal-overlay {
-      position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 100vw !important;
-      height: 100vh !important;
-      background: rgba(5, 6, 10, 0.88) !important;
-      backdrop-filter: blur(16px) !important;
-      -webkit-backdrop-filter: blur(16px) !important;
-      z-index: 99999999 !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      padding: 20px !important;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(5, 6, 10, 0.88);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      z-index: 99999999;
+      display: none;   /* hidden by default — JS adds --visible to show */
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .session-modal-overlay--visible {
+      display: flex;
       animation: sessionModalFadeIn 0.25s ease-out forwards;
     }
     @keyframes sessionModalFadeIn {
@@ -1786,14 +1789,20 @@ input[type=file]{display:none}
     const modal = document.getElementById('session-logout-modal');
     const msgEl = document.getElementById('session-logout-msg');
     if (msgEl && msg) msgEl.textContent = msg;
-    if (modal) modal.style.display = 'flex';
+    if (modal) {
+      modal.style.display = '';  // clear any inline override
+      modal.classList.add('session-modal-overlay--visible');
+    }
   }
   window.showSessionLogoutAlert = showSessionLogoutAlert;
 
   function handleSessionLogoutRedirect() {
     const modal = document.getElementById('session-logout-modal');
-    if (modal) modal.style.display = 'none';
-    
+    if (modal) {
+      modal.classList.remove('session-modal-overlay--visible');
+      modal.style.display = 'none';
+    }
+
     const stMain = document.getElementById('main-content-wrapper');
     if (stMain) stMain.style.display = 'none';
     const loader = document.getElementById('loading-screen');
