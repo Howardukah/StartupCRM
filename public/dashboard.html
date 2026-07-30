@@ -10559,8 +10559,8 @@
         <div class="field"><label class="field__label">Title</label><input class="field__input m-title" placeholder="Kickoff call"></div>
         <div class="field"><label class="field__label">Project</label><select class="field__select m-project" onchange="meetingProjectChanged(this)"></select>
         </div>
-        <div class="field"><label class="field__label">Client</label><input class="field__input m-client-name" readonly="" style="background:var(--surface-2);color:var(--text-muted);font-size:12px" placeholder="Auto-filled from project"></div>
-        <div class="field"><label class="field__label">Client email</label><input class="field__input m-client-email" readonly="" style="background:var(--surface-2);color:var(--text-muted);font-size:12px" placeholder="Auto-filled from project"></div>
+        <div class="field" style="display:none;"><label class="field__label">Client</label><input class="field__input m-client-name" readonly="" style="background:var(--surface-2);color:var(--text-muted);font-size:12px" placeholder="Auto-filled from project"></div>
+        <div class="field" style="display:none;"><label class="field__label">Client email</label><input class="field__input m-client-email" readonly="" style="background:var(--surface-2);color:var(--text-muted);font-size:12px" placeholder="Auto-filled from project"></div>
         <div class="field"><label class="field__label">Meeting link</label><input class="field__input m-zoho-meeting" type="url" placeholder="https://..."></div>
         <div class="field"><label class="field__label">Date &amp; time</label>
           <div class="field__dt-wrap">
@@ -20807,6 +20807,8 @@
 
     function openMeetingModalForProject(pid, mid) {
       populateDropdowns();
+      const m = document.getElementById('modal-meeting');
+      const projSelect = m.querySelector('.m-project');
       // If creating a meeting for a paused project, block; if editing, block when the meeting's project is paused
       if (mid) {
         const mtgCheck = db.meetings.find(x => x.id === mid);
@@ -20818,16 +20820,24 @@
         const pchk = getProject(pid);
         if (pchk && isProjectPaused(pchk)) { showToast('This project is paused — cannot schedule meetings.', 'error'); return; }
       }
-      const m = document.getElementById('modal-meeting');
       if (mid) {
         // Edit mode
         const mtg = db.meetings.find(x => x.id === mid);
         if (!mtg) return;
         editingMeetingId = mid;
         m.querySelector('.m-title').value = mtg.title;
-        m.querySelector('.m-project').value = mtg.projectId || '';
+        projSelect.value = mtg.projectId || '';
+        if (pid) {
+          projSelect.disabled = true;
+          projSelect.style.opacity = '0.75';
+          projSelect.style.cursor = 'not-allowed';
+        } else {
+          projSelect.disabled = false;
+          projSelect.style.opacity = '';
+          projSelect.style.cursor = '';
+        }
         m.querySelector('.m-zoho-meeting').value = mtg.zohoMeetingLink || '';
-        meetingProjectChanged(m.querySelector('.m-project'));
+        meetingProjectChanged(projSelect);
         const d = new Date(mtg.datetime);
         const dtInput = m.querySelector('.m-dt');
         dtInput.value = d.toLocaleString('en', { month: 'short', day: '2-digit', year: 'numeric' }) + ' · ' + d.toLocaleString('en', { hour: '2-digit', minute: '2-digit' });
@@ -20838,9 +20848,18 @@
         // Create mode
         editingMeetingId = null;
         m.querySelector('.m-title').value = '';
-        m.querySelector('.m-project').value = pid || '';
+        projSelect.value = pid || '';
+        if (pid) {
+          projSelect.disabled = true;
+          projSelect.style.opacity = '0.75';
+          projSelect.style.cursor = 'not-allowed';
+        } else {
+          projSelect.disabled = false;
+          projSelect.style.opacity = '';
+          projSelect.style.cursor = '';
+        }
         m.querySelector('.m-zoho-meeting').value = '';
-        meetingProjectChanged(m.querySelector('.m-project'));
+        meetingProjectChanged(projSelect);
         const dtInput = m.querySelector('.m-dt');
         dtInput.value = '';
         delete dtInput.dataset.iso;
@@ -22386,14 +22405,6 @@
           '<select class="field__select m-pop-project" onchange="popoverProjectChanged(this)">' + projectOptions + '</select>' +
         '</div>' +
         '<div class="field" style="margin-bottom:10px;">' +
-          '<label class="field__label">Client</label>' +
-          '<input class="field__input m-pop-client-name" readonly style="background:var(--surface-2);color:var(--text-muted);font-size:12px" placeholder="Auto-filled from project">' +
-        '</div>' +
-        '<div class="field" style="margin-bottom:10px;">' +
-          '<label class="field__label">Client email</label>' +
-          '<input class="field__input m-pop-client-email" readonly style="background:var(--surface-2);color:var(--text-muted);font-size:12px" placeholder="Auto-filled from project">' +
-        '</div>' +
-        '<div class="field" style="margin-bottom:10px;">' +
           '<label class="field__label">Meeting link</label>' +
           '<input class="field__input m-pop-link" type="url" placeholder="https://...">' +
         '</div>' +
@@ -23685,7 +23696,8 @@
       if (schedPop && !schedPop.classList.contains('hidden')) {
         const path = e.composedPath ? e.composedPath() : [];
         const isBtn = _activeScheduleBtn && (path.includes(_activeScheduleBtn) || _activeScheduleBtn.contains(e.target));
-        if (!path.includes(schedPop) && !isBtn && (!e.target.isConnected || !schedPop.contains(e.target))) {
+        const isDtp = path.some(el => el && (el.id === 'dtp-overlay' || el.id === 'dtp-popover' || (el.classList && el.classList.contains && el.classList.contains('dtp-overlay'))));
+        if (!isDtp && !path.includes(schedPop) && !isBtn && (!e.target.isConnected || !schedPop.contains(e.target))) {
           closeScheduleMeetingPopover();
         }
       }
