@@ -2004,10 +2004,16 @@ input[type=file]{display:none}
       if (el) { el.classList.remove('show'); setTimeout(() => el.remove(), 450); }
     }
 
+    let lastActivity = Date.now();
+
+    const getElapsedSec = () => Math.floor((Date.now() - lastActivity) / 1000);
+
     const idleInterval = setInterval(() => {
-      idleTime++;
-      if (idleTime === WARN_AT) showCountdownToast();
-      if (idleTime >= IDLE_LIMIT) {
+      const elapsed = getElapsedSec();
+      if (elapsed >= WARN_AT && elapsed < IDLE_LIMIT) {
+        showCountdownToast();
+      }
+      if (elapsed >= IDLE_LIMIT) {
         clearInterval(idleInterval);
         removeCountdownToast();
         // Don't interrupt an active upload
@@ -2016,15 +2022,35 @@ input[type=file]{display:none}
       }
     }, 1000);
 
+    const checkMobileWakeup = () => {
+      const elapsed = getElapsedSec();
+      if (elapsed >= IDLE_LIMIT) {
+        clearInterval(idleInterval);
+        removeCountdownToast();
+        if (typeof uploading !== 'undefined' && uploading) return;
+        doIdleLogout();
+      }
+    };
+
     const resetIdle = () => {
-      idleTime = 0;
+      lastActivity = Date.now();
       if (warningActive) removeCountdownToast();
     };
-    window.addEventListener('mousemove', resetIdle, { passive: true });
-    window.addEventListener('keydown',   resetIdle, { passive: true });
-    window.addEventListener('click',     resetIdle, { passive: true });
-    window.addEventListener('scroll',    resetIdle, { passive: true });
-    window.addEventListener('touchstart',resetIdle, { passive: true });
+
+    window.addEventListener('mousemove',  resetIdle, { passive: true });
+    window.addEventListener('keydown',    resetIdle, { passive: true });
+    window.addEventListener('click',      resetIdle, { passive: true });
+    window.addEventListener('scroll',     resetIdle, { passive: true });
+    window.addEventListener('touchstart', resetIdle, { passive: true });
+    window.addEventListener('touchmove',  resetIdle, { passive: true });
+    window.addEventListener('touchend',   resetIdle, { passive: true });
+
+    // Mobile backgrounding/screen lock detection
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkMobileWakeup();
+    });
+    window.addEventListener('pageshow', checkMobileWakeup);
+    window.addEventListener('focus', checkMobileWakeup);
   })();
 
 </script>
