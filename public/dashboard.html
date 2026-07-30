@@ -10125,7 +10125,7 @@
 
 
 
-        <div data-section="calendar"><div class="filters" style="justify-content: flex-end; margin-bottom: 14px;"><button class="btn btn--primary btn--sm" onclick="openScheduleMeetingPopover(event, this)">+ Schedule</button></div>
+        <div data-section="calendar"><div class="filters" style="justify-content: flex-end; margin-bottom: 14px;"><button class="btn btn--primary btn--sm" onclick="openScheduleMeetingPopover(event, this)"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:inline-block;vertical-align:-2px;margin-right:6px"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>Schedule meeting</button></div>
           
           <div class="calendar" id="calendar-view"></div>
         </div>
@@ -17797,7 +17797,7 @@
           let meetingsHtml = '<div class="card" style="padding:16px;margin-bottom:12px">';
           meetingsHtml += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
           meetingsHtml += '<div style="font-size:11.5px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Project meetings</div>';
-          meetingsHtml += (canEdit ? (isPaused ? '<button class="btn btn--ghost btn--sm" disabled style="opacity:.5;cursor:not-allowed" title="Project paused">+ Schedule meeting</button>' : '<button class="btn btn--ghost btn--sm" onclick="openMeetingModalForProject(\'' + p.id + '\')">+ Schedule meeting</button>') : '');
+          meetingsHtml += (canEdit ? (isPaused ? '<button class="btn btn--ghost btn--sm" disabled style="opacity:.5;cursor:not-allowed" title="Project paused"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:inline-block;vertical-align:-2px;margin-right:5px"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>Schedule meeting</button>' : '<button class="btn btn--ghost btn--sm" onclick="openMeetingModalForProject(\'' + p.id + '\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:inline-block;vertical-align:-2px;margin-right:5px"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>Schedule meeting</button>') : '');
           meetingsHtml += '</div>';
 
           if (projMeetings.length) {
