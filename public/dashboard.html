@@ -3348,6 +3348,50 @@
       text-underline-offset: 2px
     }
 
+    .pm-row-container {
+      display: flex;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      gap: 12px;
+      width: 100%;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      scroll-behavior: smooth;
+    }
+    .pm-row-container::-webkit-scrollbar {
+      display: none;
+    }
+    .pm-scroll-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 10;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.2s ease, background 0.2s ease;
+    }
+    .pm-scroll-btn:hover {
+      background: var(--surface-2);
+      transform: translateY(-50%) scale(1.08);
+    }
+    .pm-scroll-btn--left {
+      left: -12px;
+    }
+    .pm-scroll-btn--right {
+      right: -12px;
+    }
+
     .toast__action:hover {
       color: var(--accent-ink)
     }
@@ -17969,11 +18013,16 @@
           meetingsHtml += '</div>'; // header flex container
 
           if (sortedMeetings.length) {
-            const containerStyle = isExpanded
-              ? 'display:flex;flex-wrap:wrap;gap:12px;'
-              : 'display:flex;flex-wrap:nowrap;overflow-x:auto;gap:12px;padding-bottom:6px;scrollbar-width:thin;';
+            if (isExpanded) {
+              meetingsHtml += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
+            } else {
+              meetingsHtml += '<div style="position:relative;width:100%">' +
+                '<button id="pm-left-' + p.id + '" class="pm-scroll-btn pm-scroll-btn--left" onclick="scrollMeetingsRow(\'' + p.id + '\', -1)" title="Scroll left" aria-label="Scroll left">' +
+                  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>' +
+                '</button>' +
+                '<div id="pm-row-' + p.id + '" class="pm-row-container" onscroll="updateMeetingsScrollArrows(\'' + p.id + '\')">';
+            }
 
-            meetingsHtml += '<div style="' + containerStyle + '">';
             sortedMeetings.forEach(m => {
               const d = new Date(m.datetime);
               const isPast = d.getTime() < nowMs;
@@ -17998,7 +18047,16 @@
                 '</div>' +
                 '</div>';
             });
-            meetingsHtml += '</div>';
+
+            if (isExpanded) {
+              meetingsHtml += '</div>';
+            } else {
+              meetingsHtml += '</div>' +
+                '<button id="pm-right-' + p.id + '" class="pm-scroll-btn pm-scroll-btn--right" onclick="scrollMeetingsRow(\'' + p.id + '\', 1)" title="Scroll right" aria-label="Scroll right">' +
+                  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>' +
+                '</button>' +
+              '</div>';
+            }
           } else {
             meetingsHtml += '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">No meetings scheduled yet.</div>';
           }
@@ -18043,6 +18101,7 @@
 
       updateSprintCountdowns();
       checkSprintDeadlines(p);
+      setTimeout(() => { if (typeof updateMeetingsScrollArrows === 'function') updateMeetingsScrollArrows(p.id); }, 60);
     }
 
     window.toggleMeetingsExpand = function (pid) {
@@ -18050,6 +18109,32 @@
       window._expandedProjectMeetings[pid] = !window._expandedProjectMeetings[pid];
       if (typeof renderProjectDetail === 'function' && typeof currentProjectId !== 'undefined' && currentProjectId === pid) {
         renderProjectDetail(pid);
+      }
+    };
+
+    window.scrollMeetingsRow = function (pid, direction) {
+      const row = document.getElementById('pm-row-' + pid);
+      if (!row) return;
+      const amount = Math.max(260, row.clientWidth * 0.7);
+      row.scrollBy({ left: direction * amount, behavior: 'smooth' });
+    };
+
+    window.updateMeetingsScrollArrows = function (pid) {
+      const row = document.getElementById('pm-row-' + pid);
+      const leftBtn = document.getElementById('pm-left-' + pid);
+      const rightBtn = document.getElementById('pm-right-' + pid);
+      if (!row) return;
+
+      const canScrollLeft = row.scrollLeft > 5;
+      const canScrollRight = (row.scrollLeft + row.clientWidth) < (row.scrollWidth - 5);
+
+      if (leftBtn) {
+        leftBtn.style.opacity = canScrollLeft ? '1' : '0';
+        leftBtn.style.pointerEvents = canScrollLeft ? 'auto' : 'none';
+      }
+      if (rightBtn) {
+        rightBtn.style.opacity = canScrollRight ? '1' : '0';
+        rightBtn.style.pointerEvents = canScrollRight ? 'auto' : 'none';
       }
     };
 
