@@ -11809,7 +11809,30 @@
       return error instanceof TypeError && /network|fetch|load failed/i.test(error.message || '');
     }
 
+    let _offlineNoticeActive = false;
+
+    function clearOfflineNoticeAndShowRestored() {
+      const offlineEls = document.querySelectorAll('.toast--offline-notice, .slide-toast--offline-notice, #offline-toast');
+      const wasOffline = offlineEls.length > 0 || _offlineNoticeActive;
+
+      if (wasOffline) {
+        _offlineNoticeActive = false;
+        offlineEls.forEach(el => {
+          el.classList.remove('show');
+          el.classList.add('toast--leaving');
+          setTimeout(() => { if (el.parentNode) el.remove(); }, 300);
+        });
+
+        if (typeof showToast === 'function') {
+          showToast('Internet connection restored.', 'success');
+        } else if (typeof showSlideNotification === 'function') {
+          showSlideNotification('Internet connection restored', 'Your connection has been restored.', 'success');
+        }
+      }
+    }
+
     function showNoInternetConnection() {
+      _offlineNoticeActive = true;
       const existing = document.querySelector('.toast--offline-notice') || document.querySelector('.slide-toast--offline-notice') || document.getElementById('offline-toast');
       if (existing) return;
       if (typeof showToast === 'function') {
@@ -11821,18 +11844,7 @@
 
     window.addEventListener('offline', showNoInternetConnection);
     window.addEventListener('online', () => {
-      const offlineEls = document.querySelectorAll('.toast--offline-notice, .slide-toast--offline-notice, #offline-toast');
-      offlineEls.forEach(el => {
-        el.classList.remove('show');
-        el.classList.add('toast--leaving');
-        setTimeout(() => { if (el.parentNode) el.remove(); }, 300);
-      });
-
-      if (typeof showToast === 'function') {
-        showToast('Internet connection restored.', 'success');
-      } else if (typeof showSlideNotification === 'function') {
-        showSlideNotification('Internet connection restored', 'Your connection has been restored.', 'success');
-      }
+      clearOfflineNoticeAndShowRestored();
       if (typeof recoverConnection === 'function') recoverConnection();
     });
 
@@ -11871,6 +11883,7 @@
         if (typeof _setSaveIndicator === 'function') {
           _setSaveIndicator('saved');
         }
+        clearOfflineNoticeAndShowRestored();
       } catch (err) {
         _recoveringConnection = false;
         _recoveryAttempts++;
@@ -12040,6 +12053,7 @@
       }
       // Successful sync — refresh the offline fallback copy.
       cacheDbLocally();
+      clearOfflineNoticeAndShowRestored();
       if (_isOfflineMode) { _isOfflineMode = false; reloadDBFromDisk(); }
     }
 

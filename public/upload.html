@@ -2428,6 +2428,23 @@ input[type=file]{display:none}
   let _recoveringConnection = false;
   let _recoveryRetryTimer = null;
   let _recoveryAttempts = 0;
+  let _offlineNoticeActive = false;
+
+  function clearOfflineNoticeAndShowRestored() {
+    const offlineEls = document.querySelectorAll('.toast-item.offline-notice, #offline-toast');
+    const wasOffline = offlineEls.length > 0 || _offlineNoticeActive;
+
+    if (wasOffline) {
+      _offlineNoticeActive = false;
+      offlineEls.forEach(el => {
+        el.style.opacity = '0';
+        setTimeout(() => { if (el.parentNode) el.remove(); }, 220);
+      });
+      if (typeof showToast === 'function') {
+        showToast('Internet connection restored.', 'success');
+      }
+    }
+  }
 
   async function recoverConnection() {
     if (_recoveringConnection) return;
@@ -2447,6 +2464,8 @@ input[type=file]{display:none}
       _recoveringConnection = false;
       clearTimeout(_recoveryRetryTimer);
       _recoveryRetryTimer = null;
+
+      clearOfflineNoticeAndShowRestored();
     } catch (err) {
       _recoveringConnection = false;
       _recoveryAttempts++;
@@ -2458,25 +2477,25 @@ input[type=file]{display:none}
         }, 5000);
       } else {
         _recoveryAttempts = 0;
+        _offlineNoticeActive = true;
         if (typeof showToast === 'function') {
-          showToast('No internet connection.', 'error');
+          showToast('No internet connection.', 'error', true);
         }
       }
     }
   }
 
   window.addEventListener('online', () => {
-    if (typeof showToast === 'function') {
-      showToast('Internet connection restored.', 'success');
-    }
+    clearOfflineNoticeAndShowRestored();
     if (window._bucketSocket && !window._bucketSocket.connected) {
       window._bucketSocket.connect();
     }
     recoverConnection();
   });
   window.addEventListener('offline', () => {
+    _offlineNoticeActive = true;
     if (typeof showToast === 'function') {
-      showToast('No internet connection.', 'error');
+      showToast('No internet connection.', 'error', true);
     }
   });
 

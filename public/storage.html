@@ -1372,9 +1372,21 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
   }
 
   // ── Network Reconnect & Recovery ──
-  let _recoveringConnection = false;
-  let _recoveryRetryTimer = null;
-  let _recoveryAttempts = 0;
+  let _offlineNoticeActive = false;
+
+  function clearOfflineNoticeAndShowRestored() {
+    const offlineEls = document.querySelectorAll('.slide-toast--offline-notice, #offline-toast');
+    const wasOffline = offlineEls.length > 0 || _offlineNoticeActive;
+
+    if (wasOffline) {
+      _offlineNoticeActive = false;
+      offlineEls.forEach(el => {
+        el.classList.remove('show');
+        setTimeout(() => { if (el.parentNode) el.remove(); }, 300);
+      });
+      showSlideNotification('Network restored', 'Your connection has been restored.', 'success');
+    }
+  }
 
   async function recoverConnection() {
     if (_recoveringConnection) return;
@@ -1392,7 +1404,7 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
       clearTimeout(_recoveryRetryTimer);
       _recoveryRetryTimer = null;
 
-      showSlideNotification('Network restored', 'Your connection has been restored.', 'success');
+      clearOfflineNoticeAndShowRestored();
     } catch (err) {
       _recoveringConnection = false;
       _recoveryAttempts++;
@@ -1404,20 +1416,18 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
         }, 5000);
       } else {
         _recoveryAttempts = 0;
-        showSlideNotification('No internet connection', 'Check your connection and try again.', 'info');
+        _offlineNoticeActive = true;
+        showSlideNotification('No internet connection', 'Check your connection and try again.', 'error', { persistent: true, id: 'offline-toast' });
       }
     }
   }
 
   window.addEventListener('online', () => {
-    const offlineEls = document.querySelectorAll('.slide-toast--offline-notice, #offline-toast');
-    offlineEls.forEach(el => {
-      el.classList.remove('show');
-      setTimeout(() => { if (el.parentNode) el.remove(); }, 300);
-    });
+    clearOfflineNoticeAndShowRestored();
     recoverConnection();
   });
   window.addEventListener('offline', () => {
+    _offlineNoticeActive = true;
     showSlideNotification('No internet connection', 'Check your connection and try again.', 'error', { persistent: true, id: 'offline-toast' });
   });
 
