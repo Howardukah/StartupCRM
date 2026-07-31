@@ -1,4 +1,4 @@
-﻿/**
+/**
  * idle-logout.js — Centralized idle/inactivity auto-logout module
  *
  * Usage:
@@ -57,6 +57,9 @@
         const AC = window.AudioContext || window.webkitAudioContext;
         if (!AC) return;
         const ctx = new AC();
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
         const osc1 = ctx.createOscillator(); const osc2 = ctx.createOscillator();
         const gain = ctx.createGain();
         osc1.type = 'sine'; osc2.type = 'triangle';
@@ -193,8 +196,14 @@
     window.addEventListener('focus',    onResume, { signal: signal });
     window.addEventListener('pageshow', onResume, { signal: signal });
 
-    // ── Stamp current time so the clock starts from now ───────────────────
-    writeLastActivity(Date.now());
+    // ── Check existing activity timestamp or initialize if missing ────────
+    var existingTs = localStorage.getItem(LS_KEY);
+    if (!existingTs) {
+      writeLastActivity(Date.now());
+    } else {
+      // Re-evaluate immediately against pre-existing activity timestamp
+      checkNow();
+    }
 
     // ── Teardown ───────────────────────────────────────────────────────────
 

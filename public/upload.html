@@ -1860,7 +1860,7 @@ input[type=file]{display:none}
     // does not also kick this new authenticated device
     connectBucketSocket();
     initIdleLogout({
-      idleLimitMinutes   : 20,
+      idleLimitMinutes   : 30,
       warningLeadMinutes : 5,
       onLogout           : () => doIdleLogout(),
       isBusy             : () => typeof uploading !== 'undefined' && uploading
