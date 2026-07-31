@@ -2438,11 +2438,16 @@ input[type=file]{display:none}
       _offlineNoticeActive = false;
       offlineEls.forEach(el => {
         el.style.opacity = '0';
-        setTimeout(() => { if (el.parentNode) el.remove(); }, 220);
+        el.style.transform = 'translateX(350px)';
+        el.style.transition = 'opacity .25s, transform .25s';
+        setTimeout(() => { if (el.parentNode) el.remove(); }, 260);
       });
-      if (typeof showToast === 'function') {
-        showToast('Internet connection restored.', 'success');
-      }
+
+      setTimeout(() => {
+        if (typeof showToast === 'function') {
+          showToast('Internet connection restored.', 'success');
+        }
+      }, 260);
     }
   }
 

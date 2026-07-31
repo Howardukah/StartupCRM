@@ -1382,9 +1382,11 @@ html[data-theme="dark"] .theme-toggle .icon-moon {
       _offlineNoticeActive = false;
       offlineEls.forEach(el => {
         el.classList.remove('show');
-        setTimeout(() => { if (el.parentNode) el.remove(); }, 300);
+        setTimeout(() => { if (el.parentNode) el.remove(); }, 350);
       });
-      showSlideNotification('Network restored', 'Your connection has been restored.', 'success');
+      setTimeout(() => {
+        showSlideNotification('Network restored', 'Your connection has been restored.', 'success');
+      }, 260);
     }
   }
 
