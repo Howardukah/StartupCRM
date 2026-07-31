@@ -3353,24 +3353,27 @@
       flex-wrap: nowrap;
       overflow-x: auto;
       gap: 12px;
-      flex: 1;
-      min-width: 0;
+      width: 100%;
       scrollbar-width: none;
       -ms-overflow-style: none;
       scroll-behavior: smooth;
+      padding: 2px 0;
     }
     .pm-row-container::-webkit-scrollbar {
       display: none;
     }
     .pm-scroll-btn {
-      flex: 0 0 32px;
+      position: absolute;
+      top: 50%;
+      margin-top: -16px;
+      z-index: 10;
       width: 32px;
       height: 32px;
       border-radius: 50%;
-      background: var(--surface-2);
+      background: var(--surface);
       color: var(--text);
       border: 1px solid var(--border-strong);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.35);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -3379,12 +3382,17 @@
       pointer-events: none;
       transition: opacity 0.2s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
       user-select: none;
-      transform: none !important;
     }
     .pm-scroll-btn:hover {
-      background: var(--surface-3);
+      background: var(--surface-2);
       border-color: var(--accent);
       color: var(--accent);
+    }
+    .pm-scroll-btn--left {
+      left: 4px;
+    }
+    .pm-scroll-btn--right {
+      right: 4px;
     }
 
     .toast__action:hover {
@@ -18012,8 +18020,8 @@
             if (isExpanded) {
               meetingsHtml += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
             } else {
-              meetingsHtml += '<div style="display:flex;align-items:center;gap:6px;width:100%">' +
-                '<button id="pm-left-' + p.id + '" class="pm-scroll-btn" onclick="scrollMeetingsRow(\'' + p.id + '\', -1)" title="Scroll left" aria-label="Scroll left">' +
+              meetingsHtml += '<div style="position:relative;width:100%">' +
+                '<button id="pm-left-' + p.id + '" class="pm-scroll-btn pm-scroll-btn--left" onclick="scrollMeetingsRow(\'' + p.id + '\', -1)" title="Scroll left" aria-label="Scroll left">' +
                   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>' +
                 '</button>' +
                 '<div id="pm-row-' + p.id + '" class="pm-row-container" onscroll="updateMeetingsScrollArrows(\'' + p.id + '\')">';
@@ -18048,7 +18056,7 @@
               meetingsHtml += '</div>';
             } else {
               meetingsHtml += '</div>' +
-                '<button id="pm-right-' + p.id + '" class="pm-scroll-btn" onclick="scrollMeetingsRow(\'' + p.id + '\', 1)" title="Scroll right" aria-label="Scroll right">' +
+                '<button id="pm-right-' + p.id + '" class="pm-scroll-btn pm-scroll-btn--right" onclick="scrollMeetingsRow(\'' + p.id + '\', 1)" title="Scroll right" aria-label="Scroll right">' +
                   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>' +
                 '</button>' +
               '</div>';
