@@ -2020,23 +2020,29 @@
       gap: 4px;
       background: var(--surface-2);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 24px;
       padding: 3px;
     }
 
     .mail-view-toggle button {
-      padding: 5px 13px;
-      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 14px;
+      border-radius: 20px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
       font-size: 12px;
       font-weight: 600;
-      color: var(--text-muted);
-      transition: background .15s, color .15s;
+      cursor: pointer;
+      transition: all .18s ease;
     }
 
     .mail-view-toggle button.is-active {
-      background: var(--surface);
-      color: var(--text);
-      box-shadow: var(--shadow-sm);
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(99, 102, 241, .35);
     }
 
     .mail-wrap {
@@ -8109,7 +8115,7 @@
       gap: 4px;
       background: var(--surface-2);
       border: 1px solid var(--border);
-      border-radius: 20px;
+      border-radius: 24px;
       padding: 3px;
     }
 
@@ -8117,15 +8123,15 @@
       display: flex;
       align-items: center;
       gap: 5px;
-      padding: 5px 12px;
-      border-radius: 16px;
+      padding: 5px 14px;
+      border-radius: 20px;
       border: none;
       background: transparent;
       color: var(--text-muted);
       font-size: 12px;
       font-weight: 600;
       cursor: pointer;
-      transition: all .18s;
+      transition: all .18s ease;
     }
 
     .mail-view-toggle button.is-active {
