@@ -3353,7 +3353,8 @@
       flex-wrap: nowrap;
       overflow-x: auto;
       gap: 12px;
-      width: 100%;
+      flex: 1;
+      min-width: 0;
       scrollbar-width: none;
       -ms-overflow-style: none;
       scroll-behavior: smooth;
@@ -3362,34 +3363,28 @@
       display: none;
     }
     .pm-scroll-btn {
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      z-index: 10;
+      flex: 0 0 32px;
       width: 32px;
       height: 32px;
       border-radius: 50%;
-      background: var(--surface);
+      background: var(--surface-2);
       color: var(--text);
       border: 1px solid var(--border-strong);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
       opacity: 0;
       pointer-events: none;
-      transition: opacity 0.25s ease, transform 0.2s ease, background 0.2s ease;
+      transition: opacity 0.2s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+      user-select: none;
+      transform: none !important;
     }
     .pm-scroll-btn:hover {
-      background: var(--surface-2);
-      transform: translateY(-50%) scale(1.08);
-    }
-    .pm-scroll-btn--left {
-      left: -12px;
-    }
-    .pm-scroll-btn--right {
-      right: -12px;
+      background: var(--surface-3);
+      border-color: var(--accent);
+      color: var(--accent);
     }
 
     .toast__action:hover {
@@ -18016,8 +18011,8 @@
             if (isExpanded) {
               meetingsHtml += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
             } else {
-              meetingsHtml += '<div style="position:relative;width:100%">' +
-                '<button id="pm-left-' + p.id + '" class="pm-scroll-btn pm-scroll-btn--left" onclick="scrollMeetingsRow(\'' + p.id + '\', -1)" title="Scroll left" aria-label="Scroll left">' +
+              meetingsHtml += '<div style="display:flex;align-items:center;gap:6px;width:100%">' +
+                '<button id="pm-left-' + p.id + '" class="pm-scroll-btn" onclick="scrollMeetingsRow(\'' + p.id + '\', -1)" title="Scroll left" aria-label="Scroll left">' +
                   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>' +
                 '</button>' +
                 '<div id="pm-row-' + p.id + '" class="pm-row-container" onscroll="updateMeetingsScrollArrows(\'' + p.id + '\')">';
@@ -18052,7 +18047,7 @@
               meetingsHtml += '</div>';
             } else {
               meetingsHtml += '</div>' +
-                '<button id="pm-right-' + p.id + '" class="pm-scroll-btn pm-scroll-btn--right" onclick="scrollMeetingsRow(\'' + p.id + '\', 1)" title="Scroll right" aria-label="Scroll right">' +
+                '<button id="pm-right-' + p.id + '" class="pm-scroll-btn" onclick="scrollMeetingsRow(\'' + p.id + '\', 1)" title="Scroll right" aria-label="Scroll right">' +
                   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>' +
                 '</button>' +
               '</div>';
