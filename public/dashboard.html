@@ -11198,10 +11198,19 @@
       info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
     };
 
-    function showToast(message, type = 'info', { duration = 4000, action } = {}) {
+    function showToast(message, type = 'info', { duration = 4000, action, persistent = false, id = null } = {}) {
       if (type === 'error' || message instanceof Error || (message && typeof message === 'object')) {
         message = formatUserFriendlyError(message);
       }
+
+      const isOfflineMsg = typeof message === 'string' && /no internet/i.test(message);
+
+      let stack = document.getElementById('toast-stack');
+      if (stack && isOfflineMsg) {
+        const existing = stack.querySelector('.toast--offline-notice') || (id && document.getElementById(id));
+        if (existing) return existing;
+      }
+
       try {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         if (AudioContext) {
@@ -11225,7 +11234,7 @@
           osc2.stop(ctx.currentTime + 0.6);
         }
       } catch (e) { }
-      let stack = document.getElementById('toast-stack');
+
       if (!stack) {
         stack = document.createElement('div');
         stack.id = 'toast-stack';
@@ -11234,7 +11243,8 @@
       }
 
       const el = document.createElement('div');
-      el.className = 'toast toast--' + (type || 'info');
+      if (id) el.id = id;
+      el.className = 'toast toast--' + (type || 'info') + (isOfflineMsg ? ' toast--offline-notice' : '');
 
       const icon = _TOAST_ICONS[type] || _TOAST_ICONS.info;
       el.innerHTML =
@@ -11244,7 +11254,7 @@
         (action ? '<button class="toast__action"></button>' : '') +
         '</div>' +
         '<button class="toast__close" aria-label="Dismiss">✕</button>' +
-        '<div class="toast__progress" style="width:100%"></div>';
+        (persistent || isOfflineMsg ? '' : '<div class="toast__progress" style="width:100%"></div>');
 
       el.querySelector('.toast__msg').textContent = message;
       if (action) {
@@ -11253,38 +11263,43 @@
         ab.onclick = () => { action.fn(); dismiss(); };
       }
 
-      const bar = el.querySelector('.toast__progress');
-      let remaining = duration;
-      let startTime = null;
       let rafId = null;
-      let paused = false;
+      function dismiss() {
+        if (rafId) cancelAnimationFrame(rafId);
+        el.classList.add('toast--leaving');
+        el.addEventListener('animationend', () => el.remove(), { once: true });
+        setTimeout(() => { if (el.parentNode) el.remove(); }, 300);
+      }
 
-      function tick(ts) {
-        if (!startTime) startTime = ts;
-        if (!paused) {
-          remaining -= (ts - startTime);
-          startTime = ts;
-          const pct = Math.max(0, (remaining / duration) * 100);
-          bar.style.width = pct + '%';
-          if (remaining <= 0) { dismiss(); return; }
-        } else {
-          startTime = ts;
+      el.querySelector('.toast__close').onclick = dismiss;
+      stack.appendChild(el);
+
+      if (!persistent && !isOfflineMsg) {
+        const bar = el.querySelector('.toast__progress');
+        let remaining = duration;
+        let startTime = null;
+        let paused = false;
+
+        function tick(ts) {
+          if (!startTime) startTime = ts;
+          if (!paused) {
+            remaining -= (ts - startTime);
+            startTime = ts;
+            const pct = Math.max(0, (remaining / duration) * 100);
+            if (bar) bar.style.width = pct + '%';
+            if (remaining <= 0) { dismiss(); return; }
+          } else {
+            startTime = ts;
+          }
+          rafId = requestAnimationFrame(tick);
         }
+
+        el.addEventListener('mouseenter', () => { paused = true; });
+        el.addEventListener('mouseleave', () => { paused = false; });
         rafId = requestAnimationFrame(tick);
       }
 
-      function dismiss() {
-        cancelAnimationFrame(rafId);
-        el.classList.add('toast--leaving');
-        el.addEventListener('animationend', () => el.remove(), { once: true });
-      }
-
-      el.addEventListener('mouseenter', () => { paused = true; });
-      el.addEventListener('mouseleave', () => { paused = false; });
-      el.querySelector('.toast__close').onclick = dismiss;
-
-      stack.appendChild(el);
-      rafId = requestAnimationFrame(tick);
+      return el;
     }
 
     const EMPTY_DB = {
@@ -11795,20 +11810,28 @@
     }
 
     function showNoInternetConnection() {
-      const nowTs = Date.now();
-      if (nowTs - _lastOfflineNoticeAt < 1500) return;
-      _lastOfflineNoticeAt = nowTs;
+      const existing = document.querySelector('.toast--offline-notice') || document.querySelector('.slide-toast--offline-notice') || document.getElementById('offline-toast');
+      if (existing) return;
       if (typeof showToast === 'function') {
-        showToast('No internet connection.', 'error');
+        showToast('No internet connection.', 'error', { persistent: true, id: 'offline-toast' });
       } else if (typeof showSlideNotification === 'function') {
-        showSlideNotification('No internet connection', 'Check your connection and try again.', 'error');
+        showSlideNotification('No internet connection', 'Check your connection and try again.', 'error', { persistent: true, id: 'offline-toast' });
       }
     }
 
     window.addEventListener('offline', showNoInternetConnection);
     window.addEventListener('online', () => {
+      const offlineEls = document.querySelectorAll('.toast--offline-notice, .slide-toast--offline-notice, #offline-toast');
+      offlineEls.forEach(el => {
+        el.classList.remove('show');
+        el.classList.add('toast--leaving');
+        setTimeout(() => { if (el.parentNode) el.remove(); }, 300);
+      });
+
       if (typeof showToast === 'function') {
         showToast('Internet connection restored.', 'success');
+      } else if (typeof showSlideNotification === 'function') {
+        showSlideNotification('Internet connection restored', 'Your connection has been restored.', 'success');
       }
       if (typeof recoverConnection === 'function') recoverConnection();
     });
@@ -13774,9 +13797,15 @@
       } catch (e) { }
     }
 
-    function showSlideNotification(title, message, type) {
-      playNotificationSound(type);
+    function showSlideNotification(title, message, type, options = {}) {
+      const isOfflineMsg = /no internet/i.test(title || '') || /no internet/i.test(message || '');
       let container = document.getElementById('slide-toast-container');
+      if (container && isOfflineMsg) {
+        const existing = container.querySelector('.slide-toast--offline-notice') || (options.id && document.getElementById(options.id));
+        if (existing) return existing;
+      }
+
+      playNotificationSound(type);
       if (!container) {
         container = document.createElement('div');
         container.id = 'slide-toast-container';
@@ -13784,7 +13813,8 @@
         document.body.appendChild(container);
       }
       const el = document.createElement('div');
-      el.className = 'slide-toast slide-toast--' + (type || 'info');
+      if (options.id) el.id = options.id;
+      el.className = 'slide-toast slide-toast--' + (type || 'info') + (isOfflineMsg ? ' slide-toast--offline-notice' : '');
       let icon = '';
       if (type === 'chat') {
         icon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
@@ -13807,12 +13837,15 @@
       };
       container.appendChild(el);
       setTimeout(() => el.classList.add('show'), 50);
-      setTimeout(() => {
-        if (el.parentNode) {
-          el.classList.remove('show');
-          setTimeout(() => el.remove(), 450);
-        }
-      }, 5000);
+      if (!options.persistent && !isOfflineMsg) {
+        setTimeout(() => {
+          if (el.parentNode) {
+            el.classList.remove('show');
+            setTimeout(() => el.remove(), 450);
+          }
+        }, 5000);
+      }
+      return el;
     }
 
     function scanForNewNotifications(fresh) {
