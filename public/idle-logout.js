@@ -95,21 +95,21 @@
 
       const el = document.createElement('div');
       el.id = 'inactivity-warning-toast';
-      el.className = 'slide-toast slide-toast--warn';
-      el.style.cssText = 'position:relative;overflow:hidden;padding-bottom:14px;';
+      el.className = 'slide-toast slide-toast--accent glossy-toast';
+      el.style.cssText = 'position:relative;overflow:hidden;padding-bottom:16px;background:linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%), var(--surface, #1e293b);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.18);box-shadow:0 12px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25);border-radius:14px;';
       el.innerHTML =
-        '<div class="slide-toast__icon-wrap" style="background:rgba(245,158,11,0.12);color:var(--warn,#f59e0b);">' +
+        '<div class="slide-toast__icon-wrap" style="background:color-mix(in srgb, var(--accent,#00A8B5) 15%, transparent);color:var(--accent,#00A8B5);border:1px solid color-mix(in srgb, var(--accent,#00A8B5) 30%, transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,0.2);">' +
           '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' +
         '</div>' +
         '<div class="slide-toast__content" style="flex:1;">' +
-          '<div class="slide-toast__title">Inactivity Warning</div>' +
-          '<div class="slide-toast__desc">You will be logged out in <strong id="inactivity-countdown" style="color:var(--warn,#f59e0b);font-variant-numeric:tabular-nums;">' + String(Math.floor(WARN_SECS / 60)).padStart(2, '0') + ':00</strong> due to inactivity.</div>' +
-          '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;">' +
-            '<button id="inactivity-stay-btn" style="background:var(--warn,#f59e0b);color:#fff;border:none;padding:5px 12px;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer;">Stay Logged In</button>' +
-            '<button id="inactivity-logout-btn" style="background:transparent;color:var(--text-muted,#888);border:1px solid var(--border,#ccc);padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;">Log Out</button>' +
+          '<div class="slide-toast__title" style="font-weight:700;font-size:13.5px;color:var(--text);letter-spacing:0.01em;">Inactivity Warning</div>' +
+          '<div class="slide-toast__desc" style="font-size:12px;color:var(--text-muted);margin-top:2px;">You will be logged out in <strong id="inactivity-countdown" style="color:var(--accent,#00A8B5);font-variant-numeric:tabular-nums;font-weight:700;">' + String(Math.floor(WARN_SECS / 60)).padStart(2, '0') + ':00</strong> due to inactivity.</div>' +
+          '<div style="margin-top:12px;display:flex;gap:8px;align-items:center;">' +
+            '<button id="inactivity-stay-btn" style="background:linear-gradient(180deg, color-mix(in srgb, #ffffff 28%, var(--accent,#00A8B5)) 0%, var(--accent,#00A8B5) 100%);color:#fff;border:1px solid rgba(255,255,255,0.3);padding:6px 14px;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,0.4), 0 4px 14px color-mix(in srgb, var(--accent,#00A8B5) 45%, transparent);transition:all 0.18s ease;">Stay Logged In</button>' +
+            '<button id="inactivity-logout-btn" style="background:linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.01) 100%);color:var(--text-muted,#888);border:1px solid var(--border,#ccc);padding:5px 12px;border-radius:8px;font-size:12px;cursor:pointer;backdrop-filter:blur(8px);transition:all 0.18s ease;">Log Out</button>' +
           '</div>' +
         '</div>' +
-        '<div id="inactivity-progress" style="position:absolute;bottom:0;left:0;height:4px;background:var(--warn,#f59e0b);width:100%;transition:width 1s linear;"></div>';
+        '<div id="inactivity-progress" style="position:absolute;bottom:0;left:0;height:4px;background:linear-gradient(90deg, var(--accent,#00A8B5), color-mix(in srgb, #ffffff 35%, var(--accent,#00A8B5)));width:100%;transition:width 1s linear;box-shadow:0 0 8px var(--accent,#00A8B5);"></div>';
 
       container.appendChild(el);
       setTimeout(function() { el.classList.add('show'); }, 50);
