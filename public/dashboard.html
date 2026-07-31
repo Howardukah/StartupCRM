@@ -11741,9 +11741,13 @@
         db.messages = db.messages || []; db.chatGroups = db.chatGroups || []; db.spreadsheets = db.spreadsheets || []; db.notes = db.notes || []; db.attendance = db.attendance || [];
 
         const member = getMember(userId);
-        if (!member) { backToSignIn(); return; }
+        if (!member) {
+          console.warn('User not found in team list:', userId);
+          backToSignIn();
+          return;
+        }
         // Set currentUserId first so any downstream renders know who we are!
-        currentUserId = userId;
+        currentUserId = member.id;
 
         if (!loadedFromCache) {
           cacheDbLocally();
@@ -13468,7 +13472,11 @@
       return ROLE_PERMISSIONS[role] && ROLE_PERMISSIONS[role][permission];
     }
 
-    function getMember(id) { return db.team.find(m => m.id === id); }
+    function getMember(id) {
+      if (!id || !db || !Array.isArray(db.team)) return null;
+      const target = String(id).trim().toLowerCase();
+      return db.team.find(m => m && (m.id === id || String(m.id).toLowerCase() === target || (m.email && String(m.email).trim().toLowerCase() === target)));
+    }
     function displayNameFor(id) {
       const m = getMember(id);
       if (!m) return 'Someone';
