@@ -14434,7 +14434,12 @@
         const markBtn = document.getElementById('kebab-mark-btn');
         if (markBtn) {
           const showMark = folder !== 'sent' && folder !== 'drafts';
-          markBtn.style.display = showMark ? '' : 'none';
+          markBtn.style.display = showMark ? 'flex' : 'none';
+        }
+
+        const deleteBtn = document.getElementById('kebab-delete-btn');
+        if (deleteBtn) {
+          deleteBtn.style.display = 'flex';
         }
 
         const textSpan = document.getElementById('kebab-mark-text');
@@ -14443,7 +14448,7 @@
         }
 
         const rect = event.currentTarget.getBoundingClientRect();
-        dropdown.style.left = (rect.right - 140) + 'px';
+        dropdown.style.left = Math.max(10, rect.right - 140) + 'px';
         dropdown.style.top = (rect.bottom + 4) + 'px';
         dropdown.classList.remove('hidden');
         dropdown.style.display = 'flex';
@@ -24390,6 +24395,11 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
       <span id="kebab-mark-text">Mark as read</span>
     </button>
+    <button id="kebab-delete-btn" class="kebab-delete" onclick="window.kebabDeleteMail(event)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+      <span>Delete email</span>
+    </button>
+  </div>
   <!-- Middle Screen Session Terminated Alert Modal -->
   <style>
     .session-modal-overlay {
