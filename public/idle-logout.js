@@ -96,28 +96,21 @@
       const el = document.createElement('div');
       el.id = 'inactivity-warning-toast';
       el.className = 'slide-toast slide-toast--accent glossy-toast';
-      el.style.cssText = 'position:relative;overflow:hidden;padding-bottom:16px;background:linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%), var(--surface, #1e293b);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.18);box-shadow:0 12px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25);border-radius:14px;';
+      el.style.cssText = 'position:relative;padding:12px 16px;background:var(--surface);border:1px solid var(--border);box-shadow:0 10px 28px -4px rgba(0,0,0,0.22);border-radius:12px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);cursor:pointer;user-select:none;max-width:320px;';
+      el.title = 'Click anywhere to stay logged in';
+      el.onclick = function(e) { e.stopPropagation(); resetIdle(true); };
+
       el.innerHTML =
-        '<div class="slide-toast__icon-wrap" style="background:color-mix(in srgb, var(--accent,#00A8B5) 15%, transparent);color:var(--accent,#00A8B5);border:1px solid color-mix(in srgb, var(--accent,#00A8B5) 30%, transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,0.2);">' +
+        '<div class="slide-toast__icon-wrap" style="background:color-mix(in srgb, var(--accent,#00A8B5) 15%, transparent);color:var(--accent,#00A8B5);border:1px solid color-mix(in srgb, var(--accent,#00A8B5) 30%, transparent);width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
           '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' +
         '</div>' +
-        '<div class="slide-toast__content" style="flex:1;">' +
-          '<div class="slide-toast__title" style="font-weight:700;font-size:13.5px;color:var(--text);letter-spacing:0.01em;">Inactivity Warning</div>' +
-          '<div class="slide-toast__desc" style="font-size:12px;color:var(--text-muted);margin-top:2px;">You will be logged out in <strong id="inactivity-countdown" style="color:var(--accent,#00A8B5);font-variant-numeric:tabular-nums;font-weight:700;">' + String(Math.floor(WARN_SECS / 60)).padStart(2, '0') + ':00</strong> due to inactivity.</div>' +
-          '<div style="margin-top:12px;display:flex;gap:8px;align-items:center;">' +
-            '<button id="inactivity-stay-btn" style="background:linear-gradient(180deg, color-mix(in srgb, #ffffff 28%, var(--accent,#00A8B5)) 0%, var(--accent,#00A8B5) 100%);color:#fff;border:1px solid rgba(255,255,255,0.3);padding:6px 14px;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,0.4), 0 4px 14px color-mix(in srgb, var(--accent,#00A8B5) 45%, transparent);transition:all 0.18s ease;">Stay Logged In</button>' +
-            '<button id="inactivity-logout-btn" style="background:linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.01) 100%);color:var(--text-muted,#888);border:1px solid var(--border,#ccc);padding:5px 12px;border-radius:8px;font-size:12px;cursor:pointer;backdrop-filter:blur(8px);transition:all 0.18s ease;">Log Out</button>' +
-          '</div>' +
-        '</div>' +
-        '<div id="inactivity-progress" style="position:absolute;bottom:0;left:0;height:4px;background:linear-gradient(90deg, var(--accent,#00A8B5), color-mix(in srgb, #ffffff 35%, var(--accent,#00A8B5)));width:100%;transition:width 1s linear;box-shadow:0 0 8px var(--accent,#00A8B5);"></div>';
+        '<div class="slide-toast__content" style="flex:1;min-width:0;">' +
+          '<div class="slide-toast__title" style="font-weight:700;font-size:13px;color:var(--text);line-height:1.2;">Inactivity Warning</div>' +
+          '<div class="slide-toast__desc" style="font-size:11.5px;color:var(--text-muted);margin-top:3px;line-height:1.35;">You will be logged out in <strong id="inactivity-countdown" style="color:var(--accent,#00A8B5);font-variant-numeric:tabular-nums;font-weight:700;">' + String(Math.floor(WARN_SECS / 60)).padStart(2, '0') + ':00</strong> due to inactivity.</div>' +
+        '</div>';
 
       container.appendChild(el);
       setTimeout(function() { el.classList.add('show'); }, 50);
-
-      var stayBtn = document.getElementById('inactivity-stay-btn');
-      if (stayBtn) stayBtn.onclick = function(e) { e.stopPropagation(); resetIdle(true); };
-      var logoutBtn = document.getElementById('inactivity-logout-btn');
-      if (logoutBtn) logoutBtn.onclick = function(e) { e.stopPropagation(); destroy(); removeWarningToast(false); onLogout(); };
 
       // Countdown reads elapsed time directly — stays accurate even after throttled background ticks
       countdownInterval = setInterval(function() {
@@ -128,8 +121,6 @@
         var s = (secsLeft % 60).toString().padStart(2, '0');
         var cdEl = document.getElementById('inactivity-countdown');
         if (cdEl) cdEl.textContent = m + ':' + s;
-        var pEl = document.getElementById('inactivity-progress');
-        if (pEl) pEl.style.width = ((secsLeft / WARN_SECS) * 100) + '%';
       }, 1000);
     }
 
