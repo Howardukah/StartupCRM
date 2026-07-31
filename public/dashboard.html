@@ -2020,17 +2020,18 @@
       gap: 4px;
       background: var(--surface-2);
       border: 1px solid var(--border);
-      border-radius: 9999px;
-      padding: 3px;
+      border-radius: 9999px !important;
+      padding: 3px !important;
+      overflow: hidden !important;
     }
 
     .mail-view-toggle button {
       display: flex;
       align-items: center;
       gap: 5px;
-      padding: 5px 14px;
-      border-radius: 9999px;
-      border: none;
+      padding: 6px 16px !important;
+      border-radius: 9999px !important;
+      border: none !important;
       background: transparent;
       color: var(--text-muted);
       font-size: 12px;
@@ -2039,10 +2040,21 @@
       transition: all .18s ease;
     }
 
+    .mail-view-toggle button:first-child {
+      border-top-left-radius: 9999px !important;
+      border-bottom-left-radius: 9999px !important;
+    }
+
+    .mail-view-toggle button:last-child {
+      border-top-right-radius: 9999px !important;
+      border-bottom-right-radius: 9999px !important;
+    }
+
     .mail-view-toggle button.is-active {
-      background: var(--accent);
-      color: #fff;
-      box-shadow: 0 2px 8px rgba(99, 102, 241, .35);
+      background: var(--accent) !important;
+      color: #fff !important;
+      box-shadow: 0 2px 8px rgba(0, 168, 181, 0.4) !important;
+      border-radius: 9999px !important;
     }
 
     .mail-wrap {
@@ -8115,17 +8127,18 @@
       gap: 4px;
       background: var(--surface-2);
       border: 1px solid var(--border);
-      border-radius: 9999px;
-      padding: 3px;
+      border-radius: 9999px !important;
+      padding: 3px !important;
+      overflow: hidden !important;
     }
 
     .mail-view-toggle button {
       display: flex;
       align-items: center;
       gap: 5px;
-      padding: 5px 14px;
-      border-radius: 9999px;
-      border: none;
+      padding: 6px 16px !important;
+      border-radius: 9999px !important;
+      border: none !important;
       background: transparent;
       color: var(--text-muted);
       font-size: 12px;
@@ -8134,10 +8147,21 @@
       transition: all .18s ease;
     }
 
+    .mail-view-toggle button:first-child {
+      border-top-left-radius: 9999px !important;
+      border-bottom-left-radius: 9999px !important;
+    }
+
+    .mail-view-toggle button:last-child {
+      border-top-right-radius: 9999px !important;
+      border-bottom-right-radius: 9999px !important;
+    }
+
     .mail-view-toggle button.is-active {
-      background: var(--accent);
-      color: #fff;
-      box-shadow: 0 2px 8px rgba(99, 102, 241, .35);
+      background: var(--accent) !important;
+      color: #fff !important;
+      box-shadow: 0 2px 8px rgba(0, 168, 181, 0.4) !important;
+      border-radius: 9999px !important;
     }
 
     .mail-view-toggle button svg {
