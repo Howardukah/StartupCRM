@@ -96,19 +96,28 @@
       const el = document.createElement('div');
       el.id = 'inactivity-warning-toast';
       el.className = 'slide-toast slide-toast--warn';
-      el.style.cssText = 'position:relative;overflow:hidden;';
+      el.style.cssText = 'position:relative;overflow:hidden;padding-bottom:14px;';
       el.innerHTML =
         '<div class="slide-toast__icon-wrap" style="background:rgba(245,158,11,0.12);color:var(--warn,#f59e0b);">' +
           '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' +
         '</div>' +
-        '<div class="slide-toast__content">' +
+        '<div class="slide-toast__content" style="flex:1;">' +
           '<div class="slide-toast__title">Inactivity Warning</div>' +
-          '<div class="slide-toast__desc">You will be logged out in <strong id="inactivity-countdown" style="color:var(--warn,#f59e0b);font-variant-numeric:tabular-nums;">' + String(Math.floor(WARN_SECS / 60)).padStart(2, '0') + ':00</strong> due to inactivity.<br><span style="font-size:11px;opacity:0.7;">Move or click anywhere to stay logged in.</span></div>' +
+          '<div class="slide-toast__desc">You will be logged out in <strong id="inactivity-countdown" style="color:var(--warn,#f59e0b);font-variant-numeric:tabular-nums;">' + String(Math.floor(WARN_SECS / 60)).padStart(2, '0') + ':00</strong> due to inactivity.</div>' +
+          '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;">' +
+            '<button id="inactivity-stay-btn" style="background:var(--warn,#f59e0b);color:#fff;border:none;padding:5px 12px;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer;">Stay Logged In</button>' +
+            '<button id="inactivity-logout-btn" style="background:transparent;color:var(--text-muted,#888);border:1px solid var(--border,#ccc);padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;">Log Out</button>' +
+          '</div>' +
         '</div>' +
         '<div id="inactivity-progress" style="position:absolute;bottom:0;left:0;height:4px;background:var(--warn,#f59e0b);width:100%;transition:width 1s linear;"></div>';
 
       container.appendChild(el);
       setTimeout(function() { el.classList.add('show'); }, 50);
+
+      var stayBtn = document.getElementById('inactivity-stay-btn');
+      if (stayBtn) stayBtn.onclick = function(e) { e.stopPropagation(); resetIdle(true); };
+      var logoutBtn = document.getElementById('inactivity-logout-btn');
+      if (logoutBtn) logoutBtn.onclick = function(e) { e.stopPropagation(); destroy(); removeWarningToast(false); onLogout(); };
 
       // Countdown reads elapsed time directly — stays accurate even after throttled background ticks
       countdownInterval = setInterval(function() {
@@ -164,23 +173,25 @@
 
     // ── Activity reset ─────────────────────────────────────────────────────
 
-    function resetIdle() {
+    function resetIdle(force) {
       if (destroyed) return;
       var wasWarning = warningActive;
+      // While warning toast is active, passive mouse movements do not auto-dismiss;
+      // user must click 'Stay Logged In', click anywhere, or press a key.
+      if (wasWarning && !force) return;
       writeLastActivity(Date.now()); // only this tab writes; other tabs read via storage event
       if (wasWarning) removeWarningToast(true);
     }
 
-    var activityEvents = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart', 'touchmove', 'touchend'];
-    activityEvents.forEach(function(evt) {
-      window.addEventListener(evt, resetIdle, { passive: true, signal: signal });
-    });
+    // Passive timers update activity timestamp; when warning is active, click/keydown triggers resetIdle(true)
+    window.addEventListener('mousemove',  function() { if (!warningActive) resetIdle(false); }, { passive: true, signal: signal });
+    window.addEventListener('scroll',     function() { if (!warningActive) resetIdle(false); }, { passive: true, signal: signal });
+    window.addEventListener('touchmove',  function() { if (!warningActive) resetIdle(false); }, { passive: true, signal: signal });
+    window.addEventListener('click',      function() { resetIdle(true); },  { passive: true, signal: signal });
+    window.addEventListener('keydown',    function() { resetIdle(true); },  { passive: true, signal: signal });
+    window.addEventListener('touchstart', function() { resetIdle(true); },  { passive: true, signal: signal });
 
     // ── Cross-tab sync — READ ONLY, no write-back, no feedback loop ────────
-    // Tab A writes LS_KEY -> Tab B's storage event fires -> Tab B reads new
-    // timestamp via readLastActivity() (already in localStorage) and dismisses
-    // its warning toast. Tab B does NOT write back — so there is no loop.
-
     window.addEventListener('storage', function(e) {
       if (e.key !== LS_KEY) return;
       if (warningActive) removeWarningToast(false);
@@ -188,7 +199,13 @@
 
     // ── Immediate re-check on tab resume / mobile wakeup ──────────────────
 
-    function onResume() { if (!destroyed) checkNow(); }
+    function onResume() {
+      if (destroyed) return;
+      if (warningActive) {
+        playChime(); // Replay chime on tab focus so user hears audio upon switching back
+      }
+      checkNow();
+    }
 
     document.addEventListener('visibilitychange', function() {
       if (document.visibilityState === 'visible') onResume();
