@@ -17939,28 +17939,55 @@
 
         // Meetings section
         (function () {
+          window._expandedProjectMeetings = window._expandedProjectMeetings || {};
+          const isExpanded = !!window._expandedProjectMeetings[p.id];
           const nowMs = Date.now();
-          const projMeetings = db.meetings
-            .filter(m => m.projectId === p.id && (new Date(m.datetime).getTime() + 60 * 60 * 1000) > nowMs)
+
+          const allProjMeetings = (db.meetings || []).filter(m => m && m.projectId === p.id);
+
+          // Separate upcoming meetings vs past meetings
+          const upcoming = allProjMeetings
+            .filter(m => new Date(m.datetime).getTime() >= nowMs)
             .sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+
+          const past = allProjMeetings
+            .filter(m => new Date(m.datetime).getTime() < nowMs)
+            .sort((a, b) => new Date(b.datetime) - new Date(a.datetime)); // Most recently passed first
+
+          const sortedMeetings = [...upcoming, ...past];
 
           let meetingsHtml = '<div class="card" style="padding:16px;margin-bottom:12px">';
           meetingsHtml += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
           meetingsHtml += '<div style="font-size:11.5px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Project meetings</div>';
-          meetingsHtml += (canEdit ? (isPaused ? '<button class="btn btn--ghost btn--sm" disabled style="opacity:.5;cursor:not-allowed" title="Project paused"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:inline-block;vertical-align:-2px;margin-right:5px"><path d="M7 10.5l-4-4v11l4-4V17c0 .55.45 1 1 1h12c.55 0 1-.45 1-1V7c0-.55-.45-1-1-1H8c-.55 0-1 .45-1 1v3.5z"/></svg>Schedule meeting</button>' : '<button class="btn btn--ghost btn--sm" onclick="openMeetingModalForProject(\'' + p.id + '\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:inline-block;vertical-align:-2px;margin-right:5px"><path d="M7 10.5l-4-4v11l4-4V17c0 .55.45 1 1 1h12c.55 0 1-.45 1-1V7c0-.55-.45-1-1-1H8c-.55 0-1 .45-1 1v3.5z"/></svg>Schedule meeting</button>') : '');
-          meetingsHtml += '</div>';
 
-          if (projMeetings.length) {
-            meetingsHtml += '<div style="display:flex;flex-wrap:wrap;gap:12px">';
-            projMeetings.forEach(m => {
+          meetingsHtml += '<div style="display:flex;align-items:center;gap:8px">';
+          if (sortedMeetings.length > 4) {
+            meetingsHtml += '<button class="btn btn--ghost btn--sm" onclick="toggleMeetingsExpand(\'' + p.id + '\')">' + (isExpanded ? 'Show less' : 'See all (' + sortedMeetings.length + ')') + '</button>';
+          }
+          meetingsHtml += (canEdit ? (isPaused ? '<button class="btn btn--ghost btn--sm" disabled style="opacity:.5;cursor:not-allowed" title="Project paused"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:inline-block;vertical-align:-2px;margin-right:5px"><path d="M7 10.5l-4-4v11l4-4V17c0 .55.45 1 1 1h12c.55 0 1-.45 1-1V7c0-.55-.45-1-1-1H8c-.55 0-1 .45-1 1v3.5z"/></svg>Schedule meeting</button>' : '<button class="btn btn--ghost btn--sm" onclick="openMeetingModalForProject(\'' + p.id + '\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:inline-block;vertical-align:-2px;margin-right:5px"><path d="M7 10.5l-4-4v11l4-4V17c0 .55.45 1 1 1h12c.55 0 1-.45 1-1V7c0-.55-.45-1-1-1H8c-.55 0-1 .45-1 1v3.5z"/></svg>Schedule meeting</button>') : '');
+          meetingsHtml += '</div>'; // header action flex container
+          meetingsHtml += '</div>'; // header flex container
+
+          if (sortedMeetings.length) {
+            const containerStyle = isExpanded
+              ? 'display:flex;flex-wrap:wrap;gap:12px;'
+              : 'display:flex;flex-wrap:nowrap;overflow-x:auto;gap:12px;padding-bottom:6px;scrollbar-width:thin;';
+
+            meetingsHtml += '<div style="' + containerStyle + '">';
+            sortedMeetings.forEach(m => {
               const d = new Date(m.datetime);
+              const isPast = d.getTime() < nowMs;
               const day = String(d.getDate()).padStart(2, '0');
               const month = d.toLocaleString('en', { month: 'short' }).toUpperCase();
               const timeStr = d.toLocaleString('en', { hour: '2-digit', minute: '2-digit' });
-              const clickHandler = m.zohoMeetingLink ? 'onclick="window.open(\'' + m.zohoMeetingLink + '\', \"_blank\")"' : '';
-              const hoverStyle = m.zohoMeetingLink ? 'cursor:pointer' : 'cursor:default';
-              const rowTitle = m.zohoMeetingLink ? 'title="Join Meeting (opens in new tab)"' : '';
-              meetingsHtml += '<div ' + clickHandler + ' ' + rowTitle + ' style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:12px;background:var(--surface-1);min-width:140px;max-width:190px;flex:1 1 140px;' + hoverStyle + ';transition:background 0.2s" onmouseover="if(\'' + m.zohoMeetingLink + '\') this.style.background=\'var(--surface-2)\'" onmouseout="this.style.background=\'var(--surface-1)\'">' +
+              const clickHandler = m.zohoMeetingLink ? 'onclick="window.open(\'' + m.zohoMeetingLink + '\', \'_blank\')"' : '';
+              const hoverStyle = m.zohoMeetingLink ? 'cursor:pointer;' : 'cursor:default;';
+              const rowTitle = (isPast ? '[Past Meeting] ' : '') + (m.zohoMeetingLink ? 'title="Join Meeting (opens in new tab)"' : '');
+
+              const opacityStyle = isPast ? 'opacity:0.5;filter:grayscale(0.7);' : '';
+              const cardFlex = isExpanded ? 'flex:1 1 140px;min-width:140px;max-width:190px;' : 'flex:0 0 165px;min-width:165px;max-width:185px;';
+
+              meetingsHtml += '<div ' + clickHandler + ' ' + rowTitle + ' style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:12px;background:var(--surface-1);' + cardFlex + hoverStyle + opacityStyle + 'transition:background 0.2s, opacity 0.2s" onmouseover="if(\'' + m.zohoMeetingLink + '\') this.style.background=\'var(--surface-2)\'" onmouseout="this.style.background=\'var(--surface-1)\'">' +
                 '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:44px;min-height:44px;border-radius:12px;background:var(--bg);border:1px solid var(--border);padding:6px">' +
                 '<span style="font-size:14px;font-weight:800;color:var(--text)">' + day + '</span>' +
                 '<span style="font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-top:2px">' + month + '</span>' +
@@ -17972,6 +17999,8 @@
                 '</div>';
             });
             meetingsHtml += '</div>';
+          } else {
+            meetingsHtml += '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">No meetings scheduled yet.</div>';
           }
 
           meetingsHtml += '</div>';
@@ -18015,6 +18044,14 @@
       updateSprintCountdowns();
       checkSprintDeadlines(p);
     }
+
+    window.toggleMeetingsExpand = function (pid) {
+      window._expandedProjectMeetings = window._expandedProjectMeetings || {};
+      window._expandedProjectMeetings[pid] = !window._expandedProjectMeetings[pid];
+      if (typeof renderProjectDetail === 'function' && typeof currentProjectId !== 'undefined' && currentProjectId === pid) {
+        renderProjectDetail(pid);
+      }
+    };
 
     function openLeadPicker(pid, e) {
       e && e.stopPropagation();
