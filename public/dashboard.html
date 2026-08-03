@@ -14394,13 +14394,24 @@
         const snippet = snippetLines.join(' ').trim().substring(0, 60) + (snippetLines.join(' ').trim().length > 60 ? '…' : '');
 
         // Alias badge: show which shared mailbox received this email
-        const myMailboxAddr = (currentUser() && currentUser().mailboxAddress) ? currentUser().mailboxAddress.toLowerCase() : '';
+        const curUser = currentUser();
+        const myMailboxAddr = (curUser && curUser.mailboxAddress) ? curUser.mailboxAddress.toLowerCase() : 'howardukah@startupbuild.tech';
         const receivedAt = (m.receivedAt || '').toLowerCase();
+        const toAddr = (m.to || '').toLowerCase();
+        let targetAlias = '';
+
+        if (receivedAt && !receivedAt.includes(myMailboxAddr)) {
+          targetAlias = m.receivedAt;
+        } else if (toAddr && !toAddr.includes(myMailboxAddr)) {
+          targetAlias = m.to;
+        }
+
         let aliasBadge = '';
-        if (receivedAt && receivedAt !== myMailboxAddr && _currentMailTab === 'inbox') {
-          const aliasPart = receivedAt.split('@')[0] || '';
-          const aliasLabel = aliasPart.charAt(0).toUpperCase() + aliasPart.slice(1);
-          aliasBadge = `<span class="mail-alias-badge">${aliasLabel}</span>`;
+        if (targetAlias && _currentMailTab === 'inbox') {
+          const rawPart = targetAlias.split('@')[0] || '';
+          const cleanPart = rawPart.replace(/[^a-zA-Z0-9]/g, '');
+          const aliasLabel = cleanPart ? (cleanPart.charAt(0).toUpperCase() + cleanPart.slice(1)) : 'Alias';
+          aliasBadge = `<span class="mail-alias-badge" style="background:#12A3B4; color:#ffffff; font-size:10px; font-weight:700; padding:2px 7px; border-radius:12px; margin-left:4px; margin-right:4px; display:inline-block; flex-shrink:0;">${aliasLabel}</span>`;
         }
 
         return `
@@ -14412,14 +14423,14 @@
                 <circle cx="12" cy="19" r="1.5"></circle>
               </svg>
             </button>
-            <div class="mail-item-row1">
+            <div class="mail-item-row1" style="display:flex; align-items:center; gap:6px;">
               <div class="mail-item-avatar">${initials}</div>
-              <span class="mail-item-sender">
-                ${isReply ? '↩ ' : ''}${displaySender}
+              <span class="mail-item-sender" style="display:flex; align-items:center; gap:4px; flex:1; min-width:0; overflow:hidden;">
+                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${isReply ? '↩ ' : ''}${displaySender}</span>
                 ${count > 1 ? `<span class="mail-thread-count">${count}</span>` : ''}
-                ${aliasBadge}
               </span>
-              <span class="mail-item-date">${dateStr}</span>
+              ${aliasBadge}
+              <span class="mail-item-date" style="flex-shrink:0;">${dateStr}</span>
             </div>
             <div class="mail-item-subject">${m.subject || '(No Subject)'}</div>
             <div class="mail-item-snippet">${snippet || '(No preview)'}</div>
@@ -14608,15 +14619,27 @@
       document.getElementById('mail-reader-date').textContent = new Date(latestMail.date).toLocaleString();
 
       // Show alias badge + To: line in full reader for shared-mailbox emails
-      const myAddr = (currentUser() && currentUser().mailboxAddress) ? currentUser().mailboxAddress.toLowerCase() : '';
+      const curUser = currentUser();
+      const myAddr = (curUser && curUser.mailboxAddress) ? curUser.mailboxAddress.toLowerCase() : 'howardukah@startupbuild.tech';
       const mailReceivedAt = (latestMail.receivedAt || '').toLowerCase();
+      const mailTo = (latestMail.to || '').toLowerCase();
+      let targetReaderAlias = '';
+
+      if (mailReceivedAt && !mailReceivedAt.includes(myAddr)) {
+        targetReaderAlias = latestMail.receivedAt;
+      } else if (mailTo && !mailTo.includes(myAddr)) {
+        targetReaderAlias = latestMail.to;
+      }
+
       const readerToLine = document.getElementById('mail-reader-to-line');
       if (readerToLine) {
-        if (mailReceivedAt && mailReceivedAt !== myAddr && latestMail.folder === 'inbox') {
-          const aliasPart = mailReceivedAt.split('@')[0] || '';
-          const aliasLabel = aliasPart.charAt(0).toUpperCase() + aliasPart.slice(1);
-          readerToLine.innerHTML = `<span class="mail-alias-badge" style="font-size:11px;">${aliasLabel}</span> <span style="font-size:12px;color:var(--text-muted);">To: ${latestMail.receivedAt}</span>`;
+        if (targetReaderAlias && latestMail.folder === 'inbox') {
+          const aliasPart = (targetReaderAlias.split('@')[0] || '').replace(/[^a-zA-Z0-9]/g, '');
+          const aliasLabel = aliasPart ? (aliasPart.charAt(0).toUpperCase() + aliasPart.slice(1)) : 'Alias';
+          readerToLine.innerHTML = `<span class="mail-alias-badge" style="background:#12A3B4; color:#ffffff; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-block;">${aliasLabel}</span> <span style="font-size:12px;color:var(--text-muted);align-self:center;">To: ${targetReaderAlias}</span>`;
           readerToLine.style.display = 'flex';
+          readerToLine.style.alignItems = 'center';
+          readerToLine.style.gap = '8px';
         } else {
           readerToLine.style.display = 'none';
         }
@@ -15104,10 +15127,10 @@
       mailOpenCompose();
       _replyingToMailId = mail.id;
 
-      // ── Task 2: Auto-set from-alias for shared mailbox replies ──
-      const myAddr = (currentUser() && currentUser().mailboxAddress) ? currentUser().mailboxAddress.toLowerCase() : '';
-      const rcvAt = (mail.receivedAt || '').toLowerCase();
-      _replyFromAlias = (rcvAt && rcvAt !== myAddr) ? mail.receivedAt : null;
+      const curUser = currentUser();
+      const myAddr = (curUser && curUser.mailboxAddress) ? curUser.mailboxAddress.toLowerCase() : 'howardukah@startupbuild.tech';
+      const rcvAt = (mail.receivedAt || mail.to || '').toLowerCase();
+      _replyFromAlias = (rcvAt && !rcvAt.includes(myAddr)) ? (mail.receivedAt || mail.to) : null;
 
       document.getElementById('mail-to').value = mail.fromEmail;
       
