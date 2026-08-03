@@ -596,7 +596,14 @@ async function initSupabase() {
 const SESSION_SECRET = process.env.SESSION_SECRET || process.env.ENCRYPTION_KEY || process.env.SUPABASE_SERVICE_KEY || 'crm_stable_session_secret_2026';
 const revokedUserIds = new Set(); // revoked by userId (survives for 25h)
 
+function unrevokeUserSession(userId) {
+  if (!userId) return;
+  revokedUserIds.delete(userId);
+  sessionLastVerified.delete(userId);
+}
+
 function signToken(userId, expiresAt, profileSetupRequired = false) {
+  unrevokeUserSession(userId);
   const payload = Buffer.from(JSON.stringify({ userId, expiresAt, profileSetupRequired })).toString('base64url');
   const sig = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
   return `${payload}.${sig}`;
