@@ -9754,7 +9754,7 @@
               <circle cx="9" cy="8" r="4"></circle>
               <path d="M2 21v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1"></path>
             </svg></span>Team</a>
-        <a class="nav-item" data-permission="canViewActivity,canViewAllContent" data-title="Activity Log" data-nav="activity" onclick="goSection('activity')"><span class="nav-item__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <a class="nav-item" data-permission="canViewActivity" data-title="Activity Log" data-nav="activity" onclick="goSection('activity')"><span class="nav-item__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M4 5h16M4 12h16M4 19h16"></path>
               <circle cx="8" cy="5" r="1.5" fill="currentColor" stroke="none"></circle>
               <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"></circle>
@@ -13486,10 +13486,29 @@
       'Marketing/Sales Head': { canManageLeads: true, canViewUploadPortal: true, canViewAllPipelines: true, canEditInvoices: true, canViewTools: true }
     };
     function hasPermission(permission) {
-      const u = currentUser();
-      const role = u ? u.role : null;
-      return ROLE_PERMISSIONS[role] && ROLE_PERMISSIONS[role][permission];
-    }
+        const u = typeof currentUser === 'function' ? currentUser() : null;
+        const rawRole = u && u.role ? u.role : 'Admin';
+        const normRole = String(rawRole).trim().toLowerCase();
+
+        // Sub Admin check (handles "Admin Sub", "sub admin", "subadmin", "admin-sub")
+        if (normRole.includes('sub')) {
+          if (permission === 'canViewActivity') return false;
+          return true; // All other admin permissions granted!
+        }
+
+        // Full Admin check (handles "Admin", "admin", "ADMIN", "administrator", "superadmin")
+        if (normRole.includes('admin')) {
+          return true;
+        }
+
+        // Case-insensitive lookup in ROLE_PERMISSIONS for other roles
+        const matchedKey = Object.keys(ROLE_PERMISSIONS).find(k => k.toLowerCase() === normRole);
+        if (matchedKey && ROLE_PERMISSIONS[matchedKey]) {
+          return !!ROLE_PERMISSIONS[matchedKey][permission];
+        }
+
+        return false;
+      }
 
     function getMember(id) {
       if (!id || !db || !Array.isArray(db.team)) return null;
