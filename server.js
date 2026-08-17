@@ -3915,6 +3915,8 @@ app.post('/api/mail/reply', validateSession, async (req, res) => {
         const sentMailObj = {
           id: row.id,
           messageId: row.message_id,
+          inReplyTo: row.in_reply_to,
+          referencesHeader: row.references_header,
           folder: 'sent',
           fromName: row.from_name || row.from_email,
           fromEmail: row.from_email,
