@@ -5447,7 +5447,7 @@
       pointer-events: none !important;
     }
 
-    .custom-select {
+        .custom-select {
       position: relative;
       user-select: none;
       display: inline-block;
@@ -5486,20 +5486,22 @@
       background: var(--surface);
       border: 1px solid var(--border-strong, var(--border));
       border-radius: 6px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-      z-index: 50;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+      z-index: 99999 !important;
       opacity: 0;
       visibility: hidden;
       transform: translateY(-4px);
       transition: opacity 0.15s, transform 0.15s, visibility 0.15s;
-      max-height: 220px;
-      overflow-y: auto;
+      max-height: 200px !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch;
     }
 
     .custom-select.is-open .custom-select__options {
-      opacity: 1;
-      visibility: visible;
-      transform: translateY(0);
+      opacity: 1 !important;
+      visibility: visible !important;
+      transform: translateY(0) !important;
+      display: block !important;
     }
 
     .custom-select__option {
@@ -9752,7 +9754,7 @@
               <circle cx="9" cy="8" r="4"></circle>
               <path d="M2 21v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1"></path>
             </svg></span>Team</a>
-        <a class="nav-item" data-permission="canViewActivity,canViewAllContent" data-title="Activity Log" data-nav="activity" onclick="goSection('activity')"><span class="nav-item__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <a class="nav-item" data-permission="canViewActivity" data-title="Activity Log" data-nav="activity" onclick="goSection('activity')"><span class="nav-item__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M4 5h16M4 12h16M4 19h16"></path>
               <circle cx="8" cy="5" r="1.5" fill="currentColor" stroke="none"></circle>
               <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"></circle>
@@ -10660,7 +10662,8 @@
             <option value="Marketing/Sales">Marketing/Sales</option>
             <option value="Marketing/Sales Head">Marketing/Sales Head</option>
             <option value="HR">HR</option>
-            <option value="Admin">Admin</option>
+            <option value="Admin Sub">Admin Sub</option>
+              <option value="Admin">Admin</option>
           </select></div>
         <div class="field"><label class="field__label">Pay Rate ($/hr)</label><input class="field__input i-pay-rate" type="number" min="0" step="0.5" placeholder="15"></div>
         <div class="field"><label class="field__label">Status</label>
@@ -13458,6 +13461,22 @@
     }
 
     /* ============ HELPERS ============ */
+    window.getDisplayRole = function getDisplayRole(memberOrRole, viewerUser) {
+      const role = typeof memberOrRole === 'string' ? memberOrRole : (memberOrRole ? memberOrRole.role : '');
+      const viewer = viewerUser || (typeof currentUser === 'function' ? currentUser() : null);
+
+      if (role === 'Admin Sub') {
+        // Only Primary Admin (role === 'Admin') sees 'Admin Sub'
+        if (viewer && viewer.role === 'Admin') {
+          return 'Admin Sub';
+        }
+        // Everyone else (including the Admin Sub member themselves) sees 'Admin'
+        return 'Admin';
+      }
+      return role || 'Member';
+    };
+    window.GetDisplayRole = window.getDisplayRole;
+
     const ROLE_PERMISSIONS = {
       'Admin': { canManageTeam: true, canAssignAdmins: true, canViewActivity: true, canManageStorage: true, canEditAllTasks: true, canManageLeads: true, canViewAllPipelines: true, canEditInvoices: true, canViewProjects: true, canViewTools: true, canViewAllContent: true, canManagePayroll: true },
       'HR': { canManageTeamRecords: true, canAddUsers: true, canViewHRMail: true, canManagePayroll: true, canViewTools: true },
@@ -16414,7 +16433,7 @@
       const rawFirst = (u.name || '').trim().split(/\s+/)[0] || u.name || '';
       const displayFirstName = rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1).toLowerCase();
       document.getElementById('user-name').textContent = displayFirstName;
-      document.getElementById('user-role').textContent = u.role;
+      document.getElementById('user-role').textContent = getDisplayRole(u);
       const userEmailEl = document.getElementById('user-email');
       userEmailEl.textContent = u.email;
       const userAccountEmailEl = document.getElementById('user-account-email');
@@ -20357,7 +20376,7 @@
             avatarHTML(m.id, 'xl') +
           '</div>' +
           '<div class="team-card__name">' + escapeHtml(m.name || '—') + '</div>' +
-          '<div class="team-card__role">' + escapeHtml(m.role || '—') + '</div>' +
+          '<div class="team-card__role">' + escapeHtml(getDisplayRole(m)) + '</div>' +
           '<div class="team-card__badge ' + badgeClass + '">' + escapeHtml(lvl) + '</div>' +
           '</div>';
       }).join('');
@@ -20384,7 +20403,7 @@
         return '<tr onclick="openMemberPreview(\'' + m.id + '\')" style="cursor:pointer">' +
           '<td class="tbl__name">' + avatarHTML(m.id) + escapeHtml(m.name) + '</td>' +
           '<td>' + escapeHtml(m.email) + '</td>' +
-          '<td><span class="badge ' + roleBadge + '"><span class="badge__dot"></span>' + m.role + '</span></td>' +
+          '<td><span class="badge ' + roleBadge + '"><span class="badge__dot"></span>' + getDisplayRole(m) + '</span></td>' +
           '<td>' + statusBadge(m.status || 'Active') + '</td>' +
           '<td>' + added + '</td>' +
           '</tr>';
@@ -20454,9 +20473,9 @@
 
     // Main async fetch + render
     async function renderActivityLog(page) {
-      if (!isAdmin()) {
+      if (!hasPermission('canViewActivity')) {
         const tbody = document.getElementById('activity-tbody');
-        if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">Only Admins can view the activity log.</td></tr>';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted);padding:20px;text-align:center;">Access restricted. Only primary Admins can view the activity log.</td></tr>';
         return;
       }
       if (page !== undefined) _activityPage = Math.max(1, page);
@@ -21349,7 +21368,7 @@
       const roleSelect = m.querySelector('.i-role');
       roleSelect.value = 'Engineer';
       Array.from(roleSelect.options).forEach(opt => {
-        if (opt.value === 'Admin' && !hasPermission('canAssignAdmins')) {
+        if (opt.value === 'Admin' && !isAdmin()) {
           opt.style.display = 'none';
           opt.disabled = true;
         } else {
@@ -21789,7 +21808,7 @@
       const roleSelect = m.querySelector('.i-role');
       roleSelect.value = mem.role || 'Engineer';
       Array.from(roleSelect.options).forEach(opt => {
-        if (opt.value === 'Admin' && !hasPermission('canAssignAdmins')) {
+        if (opt.value === 'Admin' && !isAdmin()) {
           opt.style.display = 'none';
           opt.disabled = true;
         } else {
@@ -22046,10 +22065,10 @@
         avatarEl.textContent = m.initials || '?';
       }
       modal.querySelector('#mp-name').textContent = m.name || '—';
-      modal.querySelector('#mp-role').textContent = m.role || '—';
+      modal.querySelector('#mp-role').textContent = getDisplayRole(m);
 
       // Load main info
-      modal.querySelector('#mp-info-position').value = (m.level ? m.level + ' ' : '') + (m.role || '—');
+      modal.querySelector('#mp-info-position').value = (m.level ? m.level + ' ' : '') + getDisplayRole(m);
       modal.querySelector('#mp-info-join').value = m.added ? new Date(m.added).toLocaleDateString('en', { month: 'long', day: 'numeric', year: 'numeric' }) : '—';
       modal.querySelector('#mp-info-pay').value = m.payRate ? ('$' + m.payRate + ' / hr') : '—';
       modal.querySelector('#mp-info-location').value = m.location || '—';
