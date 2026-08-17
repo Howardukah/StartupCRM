@@ -14402,11 +14402,15 @@
       }
 
       container.innerHTML = filtered.map(m => {
-        const initials = (m.fromName || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+        let displaySender = m.fromName || m.fromEmail || 'Someone';
+        // Clean any leading "Re:" or "Fwd:" prefix that might have been saved in the sender's display name
+        displaySender = displaySender.replace(/^(re|fwd|fw)\s*:\s*/gi, '').trim();
+
+        const initials = (displaySender || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
         const dateStr = formatMailDate(m.date);
         const activeClass = (_selectedMailId === m.id && _selectedMailFolder === m.folder) ? 'is-active' : '';
         const unreadClass = m.unread ? 'is-unread' : '';
-        let displaySender = m.fromName;
+
         if (_currentMailTab === 'sent') {
           const rawTo = m.to || '';
           let cleanEmail = rawTo.trim();
@@ -14429,8 +14433,6 @@
 
           displaySender = matchedName ? `To: ${matchedName}` : `To: ${rawTo}`;
         }
-        
-        const isReply = !!(m.inReplyTo || (m.subject && /^re:/i.test(m.subject.trim())));
 
         let snippetSrc = m.body || '';
         if (!snippetSrc && m.html) {
@@ -14462,20 +14464,20 @@
 
         return `
           <div class="mail-list-item ${activeClass} ${unreadClass}" onclick="mailSelect('${m.folder}','${m.id}')" style="position: relative;">
-            <button class="mail-item-kebab" onclick="event.stopPropagation(); window.toggleMailKebabDropdown(event, '${m.id}', '${m.folder}', ${m.unread})" title="More actions" aria-label="More actions">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="5" r="1.5"></circle>
-                <circle cx="12" cy="12" r="1.5"></circle>
-                <circle cx="12" cy="19" r="1.5"></circle>
-              </svg>
-            </button>
             <div class="mail-item-row1" style="display:flex; align-items:center; gap:6px;">
               <div class="mail-item-avatar">${initials}</div>
               <span class="mail-item-sender" style="display:flex; align-items:center; gap:4px; flex:1; min-width:0; overflow:hidden;">
-                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${isReply ? '<span style="color:#12A3B4;font-weight:600;margin-right:2px;">Re:</span> ' : ''}${displaySender}</span>
+                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${displaySender}</span>
               </span>
               ${aliasBadge}
               <span class="mail-item-date" style="flex-shrink:0;">${dateStr}</span>
+              <button class="mail-item-kebab" onclick="event.stopPropagation(); window.toggleMailKebabDropdown(event, '${m.id}', '${m.folder}', ${m.unread})" title="More actions" aria-label="More actions">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="5" r="1.5"></circle>
+                  <circle cx="12" cy="12" r="1.5"></circle>
+                  <circle cx="12" cy="19" r="1.5"></circle>
+                </svg>
+              </button>
             </div>
             <div class="mail-item-subject">${m.subject || '(No Subject)'}</div>
             <div class="mail-item-snippet">${snippet || '(No preview)'}</div>
