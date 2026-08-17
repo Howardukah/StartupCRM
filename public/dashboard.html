@@ -21365,7 +21365,7 @@
       const roleSelect = m.querySelector('.i-role');
       roleSelect.value = 'Engineer';
       Array.from(roleSelect.options).forEach(opt => {
-        if ((opt.value === 'Admin' || opt.value === 'Admin Sub') && currentUser().role !== 'Admin') {
+        if (opt.value === 'Admin' && !isAdmin()) {
           opt.style.display = 'none';
           opt.disabled = true;
         } else {
@@ -21805,7 +21805,7 @@
       const roleSelect = m.querySelector('.i-role');
       roleSelect.value = mem.role || 'Engineer';
       Array.from(roleSelect.options).forEach(opt => {
-        if ((opt.value === 'Admin' || opt.value === 'Admin Sub') && currentUser().role !== 'Admin') {
+        if (opt.value === 'Admin' && !isAdmin()) {
           opt.style.display = 'none';
           opt.disabled = true;
         } else {
