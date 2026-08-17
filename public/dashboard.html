@@ -16414,7 +16414,7 @@
       const rawFirst = (u.name || '').trim().split(/\s+/)[0] || u.name || '';
       const displayFirstName = rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1).toLowerCase();
       document.getElementById('user-name').textContent = displayFirstName;
-      document.getElementById('user-role').textContent = u.role;
+      document.getElementById('user-role').textContent = getDisplayRole(u);
       const userEmailEl = document.getElementById('user-email');
       userEmailEl.textContent = u.email;
       const userAccountEmailEl = document.getElementById('user-account-email');
@@ -20357,7 +20357,7 @@
             avatarHTML(m.id, 'xl') +
           '</div>' +
           '<div class="team-card__name">' + escapeHtml(m.name || '—') + '</div>' +
-          '<div class="team-card__role">' + escapeHtml(m.role || '—') + '</div>' +
+          '<div class="team-card__role">' + escapeHtml(getDisplayRole(m)) + '</div>' +
           '<div class="team-card__badge ' + badgeClass + '">' + escapeHtml(lvl) + '</div>' +
           '</div>';
       }).join('');
@@ -20384,7 +20384,7 @@
         return '<tr onclick="openMemberPreview(\'' + m.id + '\')" style="cursor:pointer">' +
           '<td class="tbl__name">' + avatarHTML(m.id) + escapeHtml(m.name) + '</td>' +
           '<td>' + escapeHtml(m.email) + '</td>' +
-          '<td><span class="badge ' + roleBadge + '"><span class="badge__dot"></span>' + m.role + '</span></td>' +
+          '<td><span class="badge ' + roleBadge + '"><span class="badge__dot"></span>' + getDisplayRole(m) + '</span></td>' +
           '<td>' + statusBadge(m.status || 'Active') + '</td>' +
           '<td>' + added + '</td>' +
           '</tr>';
@@ -20454,9 +20454,9 @@
 
     // Main async fetch + render
     async function renderActivityLog(page) {
-      if (!isAdmin()) {
+      if (!hasPermission('canViewActivity')) {
         const tbody = document.getElementById('activity-tbody');
-        if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">Only Admins can view the activity log.</td></tr>';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted);padding:20px;text-align:center;">Access restricted. Only primary Admins can view the activity log.</td></tr>';
         return;
       }
       if (page !== undefined) _activityPage = Math.max(1, page);
@@ -21349,7 +21349,7 @@
       const roleSelect = m.querySelector('.i-role');
       roleSelect.value = 'Engineer';
       Array.from(roleSelect.options).forEach(opt => {
-        if (opt.value === 'Admin' && !hasPermission('canAssignAdmins')) {
+        if ((opt.value === 'Admin' || opt.value === 'Admin Sub') && currentUser().role !== 'Admin') {
           opt.style.display = 'none';
           opt.disabled = true;
         } else {
@@ -21789,7 +21789,7 @@
       const roleSelect = m.querySelector('.i-role');
       roleSelect.value = mem.role || 'Engineer';
       Array.from(roleSelect.options).forEach(opt => {
-        if (opt.value === 'Admin' && !hasPermission('canAssignAdmins')) {
+        if ((opt.value === 'Admin' || opt.value === 'Admin Sub') && currentUser().role !== 'Admin') {
           opt.style.display = 'none';
           opt.disabled = true;
         } else {
@@ -22046,10 +22046,10 @@
         avatarEl.textContent = m.initials || '?';
       }
       modal.querySelector('#mp-name').textContent = m.name || '—';
-      modal.querySelector('#mp-role').textContent = m.role || '—';
+      modal.querySelector('#mp-role').textContent = getDisplayRole(m);
 
       // Load main info
-      modal.querySelector('#mp-info-position').value = (m.level ? m.level + ' ' : '') + (m.role || '—');
+      modal.querySelector('#mp-info-position').value = (m.level ? m.level + ' ' : '') + getDisplayRole(m);
       modal.querySelector('#mp-info-join').value = m.added ? new Date(m.added).toLocaleDateString('en', { month: 'long', day: 'numeric', year: 'numeric' }) : '—';
       modal.querySelector('#mp-info-pay').value = m.payRate ? ('$' + m.payRate + ' / hr') : '—';
       modal.querySelector('#mp-info-location').value = m.location || '—';
