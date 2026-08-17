@@ -14272,6 +14272,79 @@
         .trim();
     }
 
+    function areEmailsInSameThread(m1, m2) {
+      if (!m1 || !m2) return false;
+      if (m1.id === m2.id) return true;
+
+      // 1. Explicit RFC-822 Header Linkage
+      const m1MsgId = (m1.messageId || m1.id || '').trim();
+      const m2MsgId = (m2.messageId || m2.id || '').trim();
+
+      const m1InReply = (m1.inReplyTo || '').trim();
+      const m2InReply = (m2.inReplyTo || '').trim();
+
+      const m1Refs = (m1.referencesHeader || '').trim();
+      const m2Refs = (m2.referencesHeader || '').trim();
+
+      if (m1MsgId) {
+        if (m2InReply && m2InReply.includes(m1MsgId)) return true;
+        if (m2Refs && m2Refs.includes(m1MsgId)) return true;
+      }
+      if (m2MsgId) {
+        if (m1InReply && m1InReply.includes(m2MsgId)) return true;
+        if (m1Refs && m1Refs.includes(m2MsgId)) return true;
+      }
+
+      // 2. Normalized Subject + Participant Continuity
+      const norm1 = getNormalizedSubject(m1.subject);
+      const norm2 = getNormalizedSubject(m2.subject);
+
+      if (norm1 && norm1 !== 'no-subject' && norm1 === norm2) {
+        const p1 = new Set([
+          (m1.fromEmail || '').toLowerCase(),
+          ...(m1.to ? String(m1.to).toLowerCase().split(',').map(s => s.trim()) : [])
+        ].filter(Boolean));
+
+        const p2 = new Set([
+          (m2.fromEmail || '').toLowerCase(),
+          ...(m2.to ? String(m2.to).toLowerCase().split(',').map(s => s.trim()) : [])
+        ].filter(Boolean));
+
+        for (const addr of p1) {
+          if (p2.has(addr)) return true;
+        }
+      }
+
+      return false;
+    }
+
+    function groupMailsIntoThreads(filteredMails) {
+      const threads = [];
+      const assigned = new Set();
+
+      filteredMails.forEach(mail => {
+        if (assigned.has(mail.id)) return;
+
+        const currentThread = [mail];
+        assigned.add(mail.id);
+
+        filteredMails.forEach(other => {
+          if (assigned.has(other.id)) return;
+          if (currentThread.some(m => areEmailsInSameThread(m, other))) {
+            currentThread.push(other);
+            assigned.add(other.id);
+          }
+        });
+
+        threads.push({
+          key: mail.id,
+          emails: currentThread
+        });
+      });
+
+      return threads;
+    }
+
     window.toggleThreadMessage = function(id) {
       const msgEl = document.getElementById('msg-' + id);
       if (!msgEl) return;
@@ -14328,39 +14401,11 @@
         return;
       }
 
-      // Group by normalized subject
-      const threads = [];
-      const threadMap = {};
-
-      filtered.forEach(m => {
-        const normSubj = getNormalizedSubject(m.subject);
-        if (normSubj === 'no-subject' || normSubj === '') {
-          threads.push({
-            key: m.id,
-            emails: [m]
-          });
-        } else {
-          if (!threadMap[normSubj]) {
-            threadMap[normSubj] = {
-              key: normSubj,
-              emails: []
-            };
-            threads.push(threadMap[normSubj]);
-          }
-          threadMap[normSubj].emails.push(m);
-        }
-      });
-
-      container.innerHTML = threads.map(t => {
-        t.emails.sort((a, b) => new Date(b.date) - new Date(a.date));
-        const m = t.emails[0];
-        const count = t.emails.length;
-
+      container.innerHTML = filtered.map(m => {
         const initials = (m.fromName || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
         const dateStr = formatMailDate(m.date);
         const activeClass = (_selectedMailId === m.id && _selectedMailFolder === m.folder) ? 'is-active' : '';
-        const hasUnread = t.emails.some(msg => msg.unread);
-        const unreadClass = hasUnread ? 'is-unread' : '';
+        const unreadClass = m.unread ? 'is-unread' : '';
         let displaySender = m.fromName;
         if (_currentMailTab === 'sent') {
           const rawTo = m.to || '';
@@ -14384,14 +14429,15 @@
 
           displaySender = matchedName ? `To: ${matchedName}` : `To: ${rawTo}`;
         }
-        const isReply = !!(m.inReplyTo);
+        
+        const isReply = !!(m.inReplyTo || (m.subject && /^re:/i.test(m.subject.trim())));
 
         let snippetSrc = m.body || '';
         if (!snippetSrc && m.html) {
           snippetSrc = m.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         }
         const snippetLines = snippetSrc.split('\n').filter(l => !/^>/.test(l) && !/^On .+ wrote:/.test(l));
-        const snippet = snippetLines.join(' ').trim().substring(0, 60) + (snippetLines.join(' ').trim().length > 60 ? '…' : '');
+        const snippet = snippetLines.join(' ').trim().substring(0, 60) + (snippetLines.join(' ').trim().length > 60 ? '...' : '');
 
         // Alias badge: show which shared mailbox received this email
         const curUser = currentUser();
@@ -14416,7 +14462,7 @@
 
         return `
           <div class="mail-list-item ${activeClass} ${unreadClass}" onclick="mailSelect('${m.folder}','${m.id}')" style="position: relative;">
-            <button class="mail-item-kebab" onclick="event.stopPropagation(); window.toggleMailKebabDropdown(event, '${m.id}', '${m.folder}', ${hasUnread})" title="More actions" aria-label="More actions">
+            <button class="mail-item-kebab" onclick="event.stopPropagation(); window.toggleMailKebabDropdown(event, '${m.id}', '${m.folder}', ${m.unread})" title="More actions" aria-label="More actions">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="5" r="1.5"></circle>
                 <circle cx="12" cy="12" r="1.5"></circle>
@@ -14426,8 +14472,7 @@
             <div class="mail-item-row1" style="display:flex; align-items:center; gap:6px;">
               <div class="mail-item-avatar">${initials}</div>
               <span class="mail-item-sender" style="display:flex; align-items:center; gap:4px; flex:1; min-width:0; overflow:hidden;">
-                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${isReply ? '↩ ' : ''}${displaySender}</span>
-                ${count > 1 ? `<span class="mail-thread-count">${count}</span>` : ''}
+                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${isReply ? '<span style="color:#12A3B4;font-weight:600;margin-right:2px;">Re:</span> ' : ''}${displaySender}</span>
               </span>
               ${aliasBadge}
               <span class="mail-item-date" style="flex-shrink:0;">${dateStr}</span>
@@ -14510,12 +14555,7 @@
     window.setMailUnreadState = function(mailId, folder, isUnread) {
       const targetMail = _liveMails.find(m => m.id === mailId && m.folder === folder);
       if (targetMail) {
-        const normSubj = getNormalizedSubject(targetMail.subject);
-        _liveMails.forEach(m => {
-          if (m.folder === folder && (m.id === mailId || (normSubj && getNormalizedSubject(m.subject) === normSubj))) {
-            m.unread = isUnread;
-          }
-        });
+        targetMail.unread = isUnread;
         renderMailList();
         updateMailInboxBadge();
 
@@ -14559,12 +14599,8 @@
         return;
       }
 
-      const normSubj = getNormalizedSubject(mainMail.subject);
       const threadMails = _liveMails.filter(m => {
-        if (normSubj && normSubj !== 'no-subject') {
-          return getNormalizedSubject(m.subject) === normSubj;
-        }
-        return m.id === id;
+        return areEmailsInSameThread(mainMail, m);
       }).sort((a, b) => new Date(a.date) - new Date(b.date));
 
       const latestMail = threadMails[threadMails.length - 1];
