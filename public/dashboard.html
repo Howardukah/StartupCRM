@@ -5447,7 +5447,7 @@
       pointer-events: none !important;
     }
 
-    .custom-select {
+        .custom-select {
       position: relative;
       user-select: none;
       display: inline-block;
@@ -5479,42 +5479,30 @@
     }
 
     .custom-select__options {
-        position: absolute;
-        top: calc(100% + 4px);
-        left: 0;
-        right: 0;
-        background: var(--surface);
-        border: 1px solid var(--border-strong, var(--border));
-        border-radius: 6px;
-        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
-        z-index: 99999 !important;
-        opacity: 0;
-        visibility: hidden;
-        transform: translateY(-4px);
-        transition: opacity 0.15s, transform 0.15s, visibility 0.15s;
-        max-height: 160px !important;
-        overflow-y: auto !important;
-        -webkit-overflow-scrolling: touch;
-      }
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: var(--surface);
+      border: 1px solid var(--border-strong, var(--border));
+      border-radius: 6px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+      z-index: 99999 !important;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-4px);
+      transition: opacity 0.15s, transform 0.15s, visibility 0.15s;
+      max-height: 200px !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch;
+    }
 
     .custom-select.is-open .custom-select__options {
-        position: absolute;
-        top: calc(100% + 4px);
-        left: 0;
-        right: 0;
-        background: var(--surface);
-        border: 1px solid var(--border-strong, var(--border));
-        border-radius: 6px;
-        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
-        z-index: 99999 !important;
-        opacity: 0;
-        visibility: hidden;
-        transform: translateY(-4px);
-        transition: opacity 0.15s, transform 0.15s, visibility 0.15s;
-        max-height: 160px !important;
-        overflow-y: auto !important;
-        -webkit-overflow-scrolling: touch;
-      }
+      opacity: 1 !important;
+      visibility: visible !important;
+      transform: translateY(0) !important;
+      display: block !important;
+    }
 
     .custom-select__option {
       padding: 8px 12px;
