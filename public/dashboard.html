@@ -5479,28 +5479,42 @@
     }
 
     .custom-select__options {
-      position: absolute;
-      top: calc(100% + 4px);
-      left: 0;
-      right: 0;
-      background: var(--surface);
-      border: 1px solid var(--border-strong, var(--border));
-      border-radius: 6px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-      z-index: 50;
-      opacity: 0;
-      visibility: hidden;
-      transform: translateY(-4px);
-      transition: opacity 0.15s, transform 0.15s, visibility 0.15s;
-      max-height: 220px;
-      overflow-y: auto;
-    }
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        background: var(--surface);
+        border: 1px solid var(--border-strong, var(--border));
+        border-radius: 6px;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+        z-index: 99999 !important;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(-4px);
+        transition: opacity 0.15s, transform 0.15s, visibility 0.15s;
+        max-height: 160px !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+      }
 
     .custom-select.is-open .custom-select__options {
-      opacity: 1;
-      visibility: visible;
-      transform: translateY(0);
-    }
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        background: var(--surface);
+        border: 1px solid var(--border-strong, var(--border));
+        border-radius: 6px;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+        z-index: 99999 !important;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(-4px);
+        transition: opacity 0.15s, transform 0.15s, visibility 0.15s;
+        max-height: 160px !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+      }
 
     .custom-select__option {
       padding: 8px 12px;
@@ -10660,7 +10674,8 @@
             <option value="Marketing/Sales">Marketing/Sales</option>
             <option value="Marketing/Sales Head">Marketing/Sales Head</option>
             <option value="HR">HR</option>
-            <option value="Admin">Admin</option>
+            <option value="Admin Sub">Admin Sub</option>
+              <option value="Admin">Admin</option>
           </select></div>
         <div class="field"><label class="field__label">Pay Rate ($/hr)</label><input class="field__input i-pay-rate" type="number" min="0" step="0.5" placeholder="15"></div>
         <div class="field"><label class="field__label">Status</label>
