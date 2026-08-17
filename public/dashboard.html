@@ -14272,28 +14272,40 @@
         .trim();
     }
 
+    // Generic/shared mailbox local-parts. Two strangers both emailing "hello@"
+    // or "support@" are NOT evidence of a real conversation thread, so these
+    // are excluded from the participant-continuity check below.
+    const GENERIC_MAILBOX_LOCALPARTS = new Set([
+      'hello', 'hr', 'support', 'info', 'contact', 'sales', 'admin',
+      'noreply', 'no-reply', 'help', 'team', 'office', 'enquiries', 'inquiries'
+    ]);
+
+    function isGenericMailboxAddress(addr) {
+      const local = String(addr || '').split('@')[0].toLowerCase();
+      return GENERIC_MAILBOX_LOCALPARTS.has(local);
+    }
+
     function areEmailsInSameThread(m1, m2) {
       if (!m1 || !m2) return false;
       if (m1.id === m2.id) return true;
 
-      // 1. Explicit RFC-822 Header Linkage
-      const m1MsgId = (m1.messageId || m1.id || '').trim();
-      const m2MsgId = (m2.messageId || m2.id || '').trim();
+      // 1. Explicit RFC-822 Header Linkage.
+      // Only trust a REAL messageId (from email headers) — never fall back to
+      // the internal DB row id, which has no relationship to any email header
+      // and can produce false substring matches. Require exact id equality
+      // within the References/In-Reply-To value (headers commonly hold several
+      // space-separated ids), not a loose .includes() on the whole string.
+      const m1MsgId = (m1.messageId || '').trim();
+      const m2MsgId = (m2.messageId || '').trim();
 
-      const m1InReply = (m1.inReplyTo || '').trim();
-      const m2InReply = (m2.inReplyTo || '').trim();
+      const m1InReplySet = new Set((m1.inReplyTo || '').split(/\s+/).filter(Boolean));
+      const m2InReplySet = new Set((m2.inReplyTo || '').split(/\s+/).filter(Boolean));
 
-      const m1Refs = (m1.referencesHeader || '').trim();
-      const m2Refs = (m2.referencesHeader || '').trim();
+      const m1RefsSet = new Set((m1.referencesHeader || '').split(/\s+/).filter(Boolean));
+      const m2RefsSet = new Set((m2.referencesHeader || '').split(/\s+/).filter(Boolean));
 
-      if (m1MsgId) {
-        if (m2InReply && m2InReply.includes(m1MsgId)) return true;
-        if (m2Refs && m2Refs.includes(m1MsgId)) return true;
-      }
-      if (m2MsgId) {
-        if (m1InReply && m1InReply.includes(m2MsgId)) return true;
-        if (m1Refs && m1Refs.includes(m2MsgId)) return true;
-      }
+      if (m1MsgId && (m2InReplySet.has(m1MsgId) || m2RefsSet.has(m1MsgId))) return true;
+      if (m2MsgId && (m1InReplySet.has(m2MsgId) || m1RefsSet.has(m2MsgId))) return true;
 
       // 2. Normalized Subject + Participant Continuity
       const norm1 = getNormalizedSubject(m1.subject);
@@ -14303,12 +14315,12 @@
         const p1 = new Set([
           (m1.fromEmail || '').toLowerCase(),
           ...(m1.to ? String(m1.to).toLowerCase().split(',').map(s => s.trim()) : [])
-        ].filter(Boolean));
+        ].filter(Boolean).filter(addr => !isGenericMailboxAddress(addr)));
 
         const p2 = new Set([
           (m2.fromEmail || '').toLowerCase(),
           ...(m2.to ? String(m2.to).toLowerCase().split(',').map(s => s.trim()) : [])
-        ].filter(Boolean));
+        ].filter(Boolean).filter(addr => !isGenericMailboxAddress(addr)));
 
         for (const addr of p1) {
           if (p2.has(addr)) return true;
@@ -14401,16 +14413,15 @@
         return;
       }
 
+      // Every email is its own row — no grouping/collapsing into threads.
+      // A reply is only marked with a small "Re" tag (see isReply below).
       container.innerHTML = filtered.map(m => {
-        let displaySender = m.fromName || m.fromEmail || 'Someone';
-        // Clean any leading "Re:" or "Fwd:" prefix that might have been saved in the sender's display name
-        displaySender = displaySender.replace(/^(re|fwd|fw)\s*:\s*/gi, '').trim();
-
-        const initials = (displaySender || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+        const initials = (m.fromName || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
         const dateStr = formatMailDate(m.date);
         const activeClass = (_selectedMailId === m.id && _selectedMailFolder === m.folder) ? 'is-active' : '';
-        const unreadClass = m.unread ? 'is-unread' : '';
-
+        const hasUnread = !!m.unread;
+        const unreadClass = hasUnread ? 'is-unread' : '';
+        let displaySender = m.fromName;
         if (_currentMailTab === 'sent') {
           const rawTo = m.to || '';
           let cleanEmail = rawTo.trim();
@@ -14433,13 +14444,14 @@
 
           displaySender = matchedName ? `To: ${matchedName}` : `To: ${rawTo}`;
         }
+        const isReply = !!(m.inReplyTo);
 
         let snippetSrc = m.body || '';
         if (!snippetSrc && m.html) {
           snippetSrc = m.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         }
         const snippetLines = snippetSrc.split('\n').filter(l => !/^>/.test(l) && !/^On .+ wrote:/.test(l));
-        const snippet = snippetLines.join(' ').trim().substring(0, 60) + (snippetLines.join(' ').trim().length > 60 ? '...' : '');
+        const snippet = snippetLines.join(' ').trim().substring(0, 60) + (snippetLines.join(' ').trim().length > 60 ? '…' : '');
 
         // Alias badge: show which shared mailbox received this email
         const curUser = currentUser();
@@ -14464,20 +14476,21 @@
 
         return `
           <div class="mail-list-item ${activeClass} ${unreadClass}" onclick="mailSelect('${m.folder}','${m.id}')" style="position: relative;">
+            <button class="mail-item-kebab" onclick="event.stopPropagation(); window.toggleMailKebabDropdown(event, '${m.id}', '${m.folder}', ${hasUnread})" title="More actions" aria-label="More actions">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="5" r="1.5"></circle>
+                <circle cx="12" cy="12" r="1.5"></circle>
+                <circle cx="12" cy="19" r="1.5"></circle>
+              </svg>
+            </button>
             <div class="mail-item-row1" style="display:flex; align-items:center; gap:6px;">
               <div class="mail-item-avatar">${initials}</div>
               <span class="mail-item-sender" style="display:flex; align-items:center; gap:4px; flex:1; min-width:0; overflow:hidden;">
+                ${isReply ? `<span class="mail-reply-tag" style="flex-shrink:0; font-size:10px; font-weight:700; color:var(--text-muted); border:1px solid var(--border); border-radius:4px; padding:0 4px; line-height:15px;">Re</span>` : ''}
                 <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${displaySender}</span>
               </span>
               ${aliasBadge}
               <span class="mail-item-date" style="flex-shrink:0;">${dateStr}</span>
-              <button class="mail-item-kebab" onclick="event.stopPropagation(); window.toggleMailKebabDropdown(event, '${m.id}', '${m.folder}', ${m.unread})" title="More actions" aria-label="More actions">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="5" r="1.5"></circle>
-                  <circle cx="12" cy="12" r="1.5"></circle>
-                  <circle cx="12" cy="19" r="1.5"></circle>
-                </svg>
-              </button>
             </div>
             <div class="mail-item-subject">${m.subject || '(No Subject)'}</div>
             <div class="mail-item-snippet">${snippet || '(No preview)'}</div>
@@ -14601,26 +14614,23 @@
         return;
       }
 
-      const threadMails = _liveMails.filter(m => {
-        return areEmailsInSameThread(mainMail, m);
-      }).sort((a, b) => new Date(a.date) - new Date(b.date));
-
-      const latestMail = threadMails[threadMails.length - 1];
-      _selectedMailId = latestMail.id;
-      _selectedMailFolder = latestMail.folder;
+      // Only the tapped email itself — no thread expansion, no touching
+      // other messages in the list.
+      const threadMails = [mainMail];
+      const latestMail = mainMail;
+      _selectedMailId = mainMail.id;
+      _selectedMailFolder = mainMail.folder;
 
       let anyMarkedRead = false;
-      threadMails.forEach(m => {
-        if (m.unread) {
-          m.unread = false;
-          anyMarkedRead = true;
-          fetch('/api/mail/mark-read', {
-            method: 'POST',
-            headers: apiHeaders(),
-            body: JSON.stringify({ folder: m.folder, uid: m.id }),
-          }).catch(() => {});
-        }
-      });
+      if (mainMail.unread) {
+        mainMail.unread = false;
+        anyMarkedRead = true;
+        fetch('/api/mail/mark-read', {
+          method: 'POST',
+          headers: apiHeaders(),
+          body: JSON.stringify({ folder: mainMail.folder, uid: mainMail.id }),
+        }).catch(() => {});
+      }
 
       if (anyMarkedRead) {
         updateMailInboxBadge();
